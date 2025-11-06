@@ -42,6 +42,7 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
 }
 
 async function onFrame(delta, time, {scene, camera, renderer, player, controllers}) {
+    // make changes here
     const controllerConfigs = [controllers.right, controllers.left];
     for (let i = 0; i < 2; i++) {
         const controller = controllerConfigs[i];
