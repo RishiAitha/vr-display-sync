@@ -1,8 +1,11 @@
+// WebSocket client manager - handles server connection and messaging
+
 let ws = null;
 let connectionState = 'disconnected';
 let clientType = null;
 const eventActions = new Map();
 
+// Register client with server (WALL, VR, or DESKTOP)
 export function registerToServer(type) {
     return new Promise((resolve, reject) => {
         if (connectionState === 'connecting') {
@@ -50,7 +53,6 @@ export function registerToServer(type) {
         ws.onmessage = ({ data }) => {
             try {
                 const message = JSON.parse(data);
-                //console.log('Recieved message:', message);
 
                 handleIncomingMessage(message, {
                     resolve: registrationResolver,
@@ -96,6 +98,7 @@ export function registerToServer(type) {
     });
 }
 
+// Route incoming messages to appropriate handlers
 function handleIncomingMessage(message, { resolve, reject, timeout }) {
     if (!message.type) {
         sendError('No message type specified');
@@ -151,6 +154,7 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
     }
 }
 
+// Send message to server
 export function sendMessage(message) {
     if (!isRegistered()) {
         throw new Error('Not registered to server');
@@ -159,6 +163,7 @@ export function sendMessage(message) {
     ws.send(JSON.stringify(message));
 }
 
+// Register handler for specific message type
 export function handleEvent(type, handlerFunction) {
     eventActions.set(type, handlerFunction);
 }

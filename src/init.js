@@ -1,3 +1,5 @@
+// WebXR initialization and scene setup
+
 import * as THREE from 'three';
 import { GamepadWrapper } from 'gamepad-wrapper';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -5,6 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
+// Initialize WebXR scene with camera, renderer, and controllers
 export async function init(setupScene = () => {}, onFrame = () => {}) {
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -37,8 +40,7 @@ export async function init(setupScene = () => {}, onFrame = () => {}) {
     scene.add(player);
     player.add(camera);
 
-    // const controllerModelFactory = new XRControllerModelFactory();
-
+    // Setup XR controllers
     const controllers = {
         left: null,
         right: null,
@@ -92,6 +94,7 @@ export async function init(setupScene = () => {}, onFrame = () => {}) {
 
     setupScene(globals);
 
+    // Start animation loop
     const clock = new THREE.Clock();
 	function animate() {
 		const delta = clock.getDelta();

@@ -35,7 +35,7 @@ routes.forEach((route) => {
     });
 });
 
-// handle message coming to server
+// Route incoming messages from clients
 function handleMessage(ws, data) {
     if (!data.type) {
         sendError(ws, 'No data type specified');
@@ -43,13 +43,16 @@ function handleMessage(ws, data) {
     }
 
     switch (data.type) {
-        case 'REGISTER_CLIENT': // client wants to register to the server
+        case 'REGISTER_CLIENT':
             handleClientRegistration(ws, data);
             break;
-        case 'ERROR': // client told server there was an error
+            
+        case 'ERROR':
             console.error('Client sent error:', data.message);
             break;
+            
         case 'WALL_CALIBRATION':
+            // Broadcast wall dimensions to all VR clients
             for (const [clientWS, clientInfo] of connectedClients) {
                 if (clientInfo.type === 'VR') {
                     sendMessage(clientWS, {
@@ -59,7 +62,9 @@ function handleMessage(ws, data) {
                 }
             }
             break;
-        case 'VR_CONTROLLER_STATE': // handle vr client input
+            
+        case 'VR_CONTROLLER_STATE':
+            // Forward VR controller state to wall
             const senderClientInfo = connectedClients.get(ws);
             const userID = senderClientInfo.userID;
             let wallClient = getWallClient();
@@ -76,9 +81,9 @@ function handleMessage(ws, data) {
     }
 }
 
-// handle a new client being registered
+// Register new client and notify other clients
 function handleClientRegistration(ws, data) {
-    const { clientType } = data; // take the client type from the given data
+    const { clientType } = data;
 
     if (!clientType) {
         sendError(ws, 'Client type is required');
@@ -148,10 +153,11 @@ function handleClientRegistration(ws, data) {
     }
 }
 
-function handleDisconnection(ws) { // runs when a client websocket closes
+// Handle client disconnection and notify other clients
+function handleDisconnection(ws) {
     const clientInfo = connectedClients.get(ws);
     if (clientInfo) {
-        if (clientInfo.type === 'WALL') { // updates relevant info on connected wall
+        if (clientInfo.type === 'WALL') {
             if (wallRegistered) {
                 for (const [clientWS, info] of connectedClients) {
                     if (info.type === 'VR') {
