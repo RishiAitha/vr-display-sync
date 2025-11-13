@@ -123,7 +123,6 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
                 reject(new Error(message.message));
             }
             break;
-        case 'VR_CALIBRATED':
         case 'VR_CONTROLLER_STATE':
         case 'NEW_CLIENT':
         case 'CLIENT_DISCONNECTED':
@@ -134,6 +133,7 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
                 }
             }
             break;
+        case 'WALL_CALIBRATION':
         case 'WALL_DISCONNECTED':
             if (clientType === 'VR') {
                 let handlerFunction = eventActions.get(message.type);

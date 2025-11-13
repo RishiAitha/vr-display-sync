@@ -49,7 +49,16 @@ function handleMessage(ws, data) {
         case 'ERROR': // client told server there was an error
             console.error('Client sent error:', data.message);
             break;
-        case 'VR_CALIBRATED':
+        case 'WALL_CALIBRATION':
+            for (const [clientWS, clientInfo] of connectedClients) {
+                if (clientInfo.type === 'VR') {
+                    sendMessage(clientWS, {
+                        type: 'WALL_CALIBRATION',
+                        message: data.message
+                    });
+                }
+            }
+            break;
         case 'VR_CONTROLLER_STATE': // handle vr client input
             const senderClientInfo = connectedClients.get(ws);
             const userID = senderClientInfo.userID;
