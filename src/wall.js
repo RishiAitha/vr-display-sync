@@ -113,9 +113,11 @@ function handleVRState(message) {
     //         break;
     //     }
     // }
-    ctx.fillStyle = message.controllerType == 0 ? 'red' : 'blue';
-    ctx.arc(canvasX, canvasY);
-    ctx.fill();
+    if (message.triggerButtonState == true) {
+        ctx.beginPath();
+        ctx.arc(canvasX, canvasY, 5, 0, Math.PI * 2);
+        ctx.fill();
+    }
 }
 
 // Send calibration info to newly connected VR clients
