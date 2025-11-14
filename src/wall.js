@@ -27,50 +27,50 @@ document.body.appendChild(targetCanvas);
 const targetImage = new Image();
 targetImage.src = '/assets/target.png';
 
-const activeTargets = [];
+// const activeTargets = [];
 
-let score = 0;
+// let score = 0;
 
-let spawnInterval;
-targetImage.onload = () => {
-    spawnInterval = setInterval(() => {
-        spawnTarget();
-    }, 2000);
-};
+// let spawnInterval;
+// targetImage.onload = () => {
+//     spawnInterval = setInterval(() => {
+//         spawnTarget();
+//     }, 2000);
+// };
 
-function spawnTarget() {
-    const target = {
-        x: Math.random() * (targetCanvas.width - 50),
-        y: Math.random() * (targetCanvas.height - 50),
-        size: 50,
-        lifetime: 6000,
-        spawnTime: Date.now()
-    };
-    activeTargets.push(target);
-    drawTargets();
-}
+// function spawnTarget() {
+//     const target = {
+//         x: Math.random() * (targetCanvas.width - 50),
+//         y: Math.random() * (targetCanvas.height - 50),
+//         size: 50,
+//         lifetime: 6000,
+//         spawnTime: Date.now()
+//     };
+//     activeTargets.push(target);
+//     drawTargets();
+// }
 
-function drawTargets() {
-    const ctx = targetCanvas.getContext('2d');
+// function drawTargets() {
+//     const ctx = targetCanvas.getContext('2d');
 
-    ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+//     ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
 
-    const now = Date.now();
-    for (let i = activeTargets.length - 1; i >= 0; i--) {
-        const target = activeTargets[i];
+//     const now = Date.now();
+//     for (let i = activeTargets.length - 1; i >= 0; i--) {
+//         const target = activeTargets[i];
 
-        if (now - target.spawnTime > target.lifetime) {
-            activeTargets.splice(i, 1);
-            continue;
-        }
+//         if (now - target.spawnTime > target.lifetime) {
+//             activeTargets.splice(i, 1);
+//             continue;
+//         }
 
-        ctx.drawImage(targetImage, target.x, target.y, target.size, target.size);
-    }
+//         ctx.drawImage(targetImage, target.x, target.y, target.size, target.size);
+//     }
 
-    ctx.fillStyle = 'black';
-    ctx.font = '40px Arial';
-    ctx.fillText(`Score: ${score}`, 20, 60);
-}
+//     ctx.fillStyle = 'black';
+//     ctx.font = '40px Arial';
+//     ctx.fillText(`Score: ${score}`, 20, 60);
+// }
 
 // Store controller state for each connected user
 const controllerStates = new Map();
@@ -100,19 +100,22 @@ function handleVRState(message) {
     const canvasX = ((xPosition / message.rectXDistance) * targetCanvas.width);
     const canvasY = ((-yPosition / message.rectYDistance) * targetCanvas.height);
 
-    for (let i = activeTargets.length - 1; i >= 0; i--) {
-        const target = activeTargets[i];
-        const xDistance = canvasX - (target.x + target.size / 2);
-        const yDistance = canvasY - (target.y + target.size / 2);
-        const distance = Math.sqrt(xDistance * xDistance, yDistance * yDistance);
+    // for (let i = activeTargets.length - 1; i >= 0; i--) {
+    //     const target = activeTargets[i];
+    //     const xDistance = canvasX - (target.x + target.size / 2);
+    //     const yDistance = canvasY - (target.y + target.size / 2);
+    //     const distance = Math.sqrt(xDistance * xDistance, yDistance * yDistance);
 
-        if (distance < target.size / 2) {
-            activeTargets.splice(i, 1);
-            score++;
-            drawTargets();
-            break;
-        }
-    }
+    //     if (distance < target.size / 2) {
+    //         activeTargets.splice(i, 1);
+    //         score++;
+    //         drawTargets();
+    //         break;
+    //     }
+    // }
+    ctx.fillStyle = message.controllerType == 0 ? 'red' : 'blue';
+    ctx.arc(canvasX, canvasY);
+    ctx.fill();
 }
 
 // Send calibration info to newly connected VR clients
