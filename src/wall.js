@@ -1,5 +1,11 @@
 import * as cm from './clientManager.js';
 
+// Disable scrolling and remove default margins
+document.body.style.margin = '0';
+document.body.style.padding = '0';
+document.body.style.overflow = 'hidden';
+document.documentElement.style.overflow = 'hidden';
+
 // Register as wall client and send calibration info
 cm.registerToServer('WALL')
     .then(response => {
@@ -26,6 +32,32 @@ document.body.appendChild(targetCanvas);
 
 const targetImage = new Image();
 targetImage.src = '/assets/target.png';
+
+// Add ArUco markers for calibration
+const markerSize = 100; // Size in pixels (smaller for less obstruction)
+const markerPadding = 0; // No padding - right at the edges
+
+// Top-left marker (ID 0)
+const markerTopLeft = document.createElement('img');
+markerTopLeft.src = '/assets/5x5_1000-0.svg';
+markerTopLeft.style.position = 'absolute';
+markerTopLeft.style.top = `${markerPadding}px`;
+markerTopLeft.style.left = `${markerPadding}px`;
+markerTopLeft.style.width = `${markerSize}px`;
+markerTopLeft.style.height = `${markerSize}px`;
+markerTopLeft.style.zIndex = '500';
+document.body.appendChild(markerTopLeft);
+
+// Bottom-right marker (ID 1)
+const markerBottomRight = document.createElement('img');
+markerBottomRight.src = '/assets/5x5_1000-1.svg';
+markerBottomRight.style.position = 'absolute';
+markerBottomRight.style.bottom = `${markerPadding}px`;
+markerBottomRight.style.right = `${markerPadding}px`;
+markerBottomRight.style.width = `${markerSize}px`;
+markerBottomRight.style.height = `${markerSize}px`;
+markerBottomRight.style.zIndex = '500';
+document.body.appendChild(markerBottomRight);
 
 // Add clear canvas button
 const clearButton = document.createElement('button');
