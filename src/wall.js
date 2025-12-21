@@ -27,6 +27,23 @@ document.body.appendChild(targetCanvas);
 const targetImage = new Image();
 targetImage.src = '/assets/target.png';
 
+// Add clear canvas button
+const clearButton = document.createElement('button');
+clearButton.textContent = 'Clear Canvas';
+clearButton.style.position = 'absolute';
+clearButton.style.bottom = '20px';
+clearButton.style.left = '20px';
+clearButton.style.padding = '10px 20px';
+clearButton.style.fontSize = '16px';
+clearButton.style.zIndex = '1000';
+clearButton.style.cursor = 'pointer';
+clearButton.onclick = () => {
+    const ctx = targetCanvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+};
+document.body.appendChild(clearButton);
+
 // const activeTargets = [];
 
 // let score = 0;
@@ -85,6 +102,36 @@ function handleVRState(message) {
     }
     controllerStates.get(message.userID)[message.controllerType] = message;
     
+    console.log('Wall received VR state:', {
+        controller: message.controllerType,
+        canvasX: message.canvasX,
+        canvasY: message.canvasY,
+        trigger: message.triggerButtonState,
+        userID: message.userID
+    });
+    
+    // ===== RAYCAST-BASED DRAWING (CURRENT) =====
+    // Use canvas coordinates directly from raycast intersection
+    const canvasX = message.canvasX;
+    const canvasY = message.canvasY;
+    
+    // Validate coordinates
+    if (canvasX == null || canvasY == null || isNaN(canvasX) || isNaN(canvasY)) {
+        console.log('Invalid coordinates, skipping draw');
+        return;
+    }
+    
+    // Trigger value is analog (0.0-1.0), draw when pressed beyond threshold
+    if (message.triggerButtonState > 0.1) {
+        console.log('Drawing at:', canvasX, canvasY, 'color:', message.controllerType === 'right' ? 'blue' : 'red');
+        // Different color for each controller
+        ctx.fillStyle = message.controllerType === 'right' ? 'blue' : 'red';
+        ctx.beginPath();
+        ctx.arc(canvasX, canvasY, 5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    /* ===== PROJECTION-BASED DRAWING (OLD METHOD - COMMENTED OUT) =====
     // Project 3D VR position to 2D canvas coordinates
     // Calculate X position using dot product with screen direction vector
     const dotProduct = ((message.bottomRightCorner[0] - message.topLeftCorner[0]) * (message.position.x - message.topLeftCorner[0]))
@@ -100,24 +147,12 @@ function handleVRState(message) {
     const canvasX = ((xPosition / message.rectXDistance) * targetCanvas.width);
     const canvasY = ((-yPosition / message.rectYDistance) * targetCanvas.height);
 
-    // for (let i = activeTargets.length - 1; i >= 0; i--) {
-    //     const target = activeTargets[i];
-    //     const xDistance = canvasX - (target.x + target.size / 2);
-    //     const yDistance = canvasY - (target.y + target.size / 2);
-    //     const distance = Math.sqrt(xDistance * xDistance, yDistance * yDistance);
-
-    //     if (distance < target.size / 2) {
-    //         activeTargets.splice(i, 1);
-    //         score++;
-    //         drawTargets();
-    //         break;
-    //     }
-    // }
     if (message.triggerButtonState == true) {
         ctx.beginPath();
         ctx.arc(canvasX, canvasY, 5, 0, Math.PI * 2);
         ctx.fill();
     }
+    ===== END PROJECTION-BASED DRAWING ===== */
 }
 
 // Send calibration info to newly connected VR clients
