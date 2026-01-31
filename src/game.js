@@ -4,7 +4,7 @@
   RESERVED MESSAGE TYPES (do not use these as top-level `type` values in game messages):
     REGISTER_CLIENT, REGISTRATION_SUCCESS, REGISTRATION_ERROR,
     VR_CONTROLLER_STATE, NEW_CLIENT, CLIENT_DISCONNECTED,
-    CALIBRATION_COMMIT, WALL_CALIBRATION, WALL_DISCONNECTED,
+    CALIBRATION_COMMIT, SCREEN_CALIBRATION, SCREEN_DISCONNECTED,
     GAME_EVENT, ERROR
 */
 
@@ -23,15 +23,15 @@ export default {
         // Optional per-frame VR logic
     },
 
-    // Wall-side initialization. context: { canvas, sendGameMessage }
-    async startWall(context) {
-        // Called once on Wall after registration and canvas creation.
+    // Screen-side initialization. context: { canvas, sendGameMessage }
+    async startScreen(context) {
+        // Called once on Screen after registration and canvas creation.
         // Use context.canvas to draw, context.sendGameMessage to emit events.
     },
 
-    // Optional per-frame Wall update. delta,time in seconds.
-    updateWall(delta, time, context) {
-        // Optional per-frame wall logic
+    // Optional per-frame Screen update. delta,time in seconds.
+    updateScreen(delta, time, context) {
+        // Optional per-frame screen logic
     },
 
     /*
@@ -51,7 +51,7 @@ export default {
         // VR controller updates forwarded by the host
         if (msg.type === 'VR_CONTROLLER_STATE' && msg.message) {
             const state = msg.message;
-            // state.canvasX / state.canvasY are pixel coords on the wall canvas
+            // state.canvasX / state.canvasY are pixel coords on the screen canvas
             // Example: detect trigger press
             const trigger = state.triggerButtonState || 0;
             if (trigger > 0.5) {

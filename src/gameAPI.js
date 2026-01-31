@@ -29,15 +29,15 @@ export function updateVR(delta, time, ctx) {
     }
 }
 
-export async function startWall(ctx) {
-    if (currentGame && typeof currentGame.startWall === 'function') {
-        try { await currentGame.startWall(ctx); } catch (e) { console.error('game startWall error', e); }
+export async function startScreen(ctx) {
+    if (currentGame && typeof currentGame.startScreen === 'function') {
+        try { await currentGame.startScreen(ctx); } catch (e) { console.error('game startScreen error', e); }
     }
 }
 
-export function updateWall(delta, time, ctx) {
-    if (currentGame && typeof currentGame.updateWall === 'function') {
-        try { currentGame.updateWall(delta, time, ctx); } catch (e) { console.error('game updateWall error', e); }
+export function updateScreen(delta, time, ctx) {
+    if (currentGame && typeof currentGame.updateScreen === 'function') {
+        try { currentGame.updateScreen(delta, time, ctx); } catch (e) { console.error('game updateScreen error', e); }
     }
 }
 
@@ -50,8 +50,8 @@ cm.handleEvent('GAME_EVENT', (msg) => {
 registerGame({
     startVR: async () => {},
     updateVR: () => {},
-    startWall: async () => {},
-    updateWall: () => {},
+    startScreen: async () => {},
+    updateScreen: () => {},
     onMessage: () => {}
 });
 
@@ -61,6 +61,6 @@ export default {
     onMessage,
     startVR,
     updateVR,
-    startWall,
-    updateWall
+    startScreen,
+    updateScreen
 };

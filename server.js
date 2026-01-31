@@ -10,7 +10,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const connectedClients = new Map();
-let wallRegistered = false;
+let screenRegistered = false;
 let isShuttingDown = false;
 
 app.use(express.json());
@@ -21,7 +21,7 @@ const routes = [
     { path: '/', file: 'index.html' },
     { path: '/vr', file: 'vr.html' },
     { path: '/desktop', file: 'desktop.html' },
-    { path: '/wall', file: 'wall.html' },
+    { path: '/screen', file: 'screen.html' },
 ];
 routes.forEach((route) => {
     app.get(route.path, (req, res) => {
@@ -41,16 +41,16 @@ function handleMessage(ws, data) {
         case 'ERROR':
             console.error('Client sent error:', data.message);
             break;
-        case 'WALL_CALIBRATION':
+        case 'SCREEN_CALIBRATION':
             for (const [clientWS, clientInfo] of connectedClients) {
                 if (clientInfo.type === 'VR') {
-                    sendMessage(clientWS, { type: 'WALL_CALIBRATION', message: data.message });
+                    sendMessage(clientWS, { type: 'SCREEN_CALIBRATION', message: data.message });
                 }
             }
             break;
         case 'CALIBRATION_COMMIT':
             for (const [clientWS, clientInfo] of connectedClients) {
-                if (clientInfo.type === 'WALL') {
+                if (clientInfo.type === 'SCREEN') {
                     sendMessage(clientWS, { type: 'CALIBRATION_COMMIT', message: data.message });
                 }
             }
@@ -58,9 +58,9 @@ function handleMessage(ws, data) {
         case 'VR_CONTROLLER_STATE':
             const senderClientInfo = connectedClients.get(ws);
             const userID = senderClientInfo.userID;
-            let wallClient = getWallClient();
-            if (wallClient) {
-                sendMessage(wallClient, { type: data.type, message: { ...data.message, userID } });
+            let screenClient = getScreenClient();
+            if (screenClient) {
+                sendMessage(screenClient, { type: data.type, message: { ...data.message, userID } });
             }
             break;
         case 'GAME_EVENT':
@@ -82,19 +82,19 @@ function handleClientRegistration(ws, data) {
         return;
     }
     switch (clientType) {
-        case 'WALL':
-            if (wallRegistered) {
-                sendMessage(ws, { type: 'REGISTRATION_ERROR', message: 'Wall client already registered' });
+        case 'SCREEN':
+            if (screenRegistered) {
+                sendMessage(ws, { type: 'REGISTRATION_ERROR', message: 'Screen client already registered' });
             } else {
-                wallRegistered = true;
-                ws.clientType = 'WALL';
+                screenRegistered = true;
+                ws.clientType = 'SCREEN';
                 ws.userID = uuidv4();
-                connectedClients.set(ws, { type: 'WALL', userID: ws.userID });
-                sendMessage(ws, { type: 'REGISTRATION_SUCCESS', message: 'Successfully registered as WALL client' });
-                console.log('WALL client registered');
+                connectedClients.set(ws, { type: 'SCREEN', userID: ws.userID });
+                sendMessage(ws, { type: 'REGISTRATION_SUCCESS', message: 'Successfully registered as SCREEN client' });
+                console.log('SCREEN client registered');
                 for (const [wsIter, clientInfo] of connectedClients) {
-                    if (clientInfo.type !== 'WALL') {
-                        sendMessage(getWallClient(), { type: 'NEW_CLIENT', message: { type: clientInfo.type, userID: clientInfo.userID } });
+                    if (clientInfo.type !== 'SCREEN') {
+                        sendMessage(getScreenClient(), { type: 'NEW_CLIENT', message: { type: clientInfo.type, userID: clientInfo.userID } });
                     }
                 }
             }
@@ -105,8 +105,8 @@ function handleClientRegistration(ws, data) {
             ws.userID = uuidv4();
             connectedClients.set(ws, { type: clientType, userID: ws.userID });
             sendMessage(ws, { type: 'REGISTRATION_SUCCESS', message: `Successfully registered as ${clientType} client` });
-            if (wallRegistered) {
-                sendMessage(getWallClient(), { type: 'NEW_CLIENT', message: { type: clientType, userID: ws.userID } });
+            if (screenRegistered) {
+                sendMessage(getScreenClient(), { type: 'NEW_CLIENT', message: { type: clientType, userID: ws.userID } });
             }
             console.log(`${clientType} client registered`);
             break;
@@ -119,19 +119,19 @@ function handleClientRegistration(ws, data) {
 function handleDisconnection(ws) {
     const clientInfo = connectedClients.get(ws);
     if (!clientInfo) return;
-    if (clientInfo.type === 'WALL') {
-        if (wallRegistered) {
+    if (clientInfo.type === 'SCREEN') {
+        if (screenRegistered) {
             for (const [clientWS, info] of connectedClients) {
                 if (info.type === 'VR') {
-                    sendMessage(clientWS, { type: 'WALL_DISCONNECTED', message: 'Wall client disconnected' });
+                    sendMessage(clientWS, { type: 'SCREEN_DISCONNECTED', message: 'Screen client disconnected' });
                 }
             }
         }
-        wallRegistered = false;
-        console.log('Wall registered reset');
+        screenRegistered = false;
+        console.log('Screen registered reset');
     } else {
-        if (wallRegistered) {
-            sendMessage(getWallClient(), { type: 'CLIENT_DISCONNECTED', message: { type: clientInfo.type, userID: clientInfo.userID } });
+        if (screenRegistered) {
+            sendMessage(getScreenClient(), { type: 'CLIENT_DISCONNECTED', message: { type: clientInfo.type, userID: clientInfo.userID } });
         }
     }
     console.log(`${clientInfo.type} client disconnected`);
@@ -146,10 +146,10 @@ function sendError(ws, message) {
     sendMessage(ws, { type: 'ERROR', message });
 }
 
-function getWallClient() {
-    if (!wallRegistered) return null;
+function getScreenClient() {
+    if (!screenRegistered) return null;
     for (const [ws, clientInfo] of connectedClients) {
-        if (clientInfo.type === 'WALL') return ws;
+        if (clientInfo.type === 'SCREEN') return ws;
     }
     return null;
 }

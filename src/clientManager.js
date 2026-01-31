@@ -12,13 +12,13 @@ const eventActions = new Map();
     Examples:
         REGISTER_CLIENT, REGISTRATION_SUCCESS, REGISTRATION_ERROR,
         VR_CONTROLLER_STATE, NEW_CLIENT, CLIENT_DISCONNECTED,
-        CALIBRATION_COMMIT, WALL_CALIBRATION, WALL_DISCONNECTED,
+        CALIBRATION_COMMIT, SCREEN_CALIBRATION, SCREEN_DISCONNECTED,
         GAME_EVENT, ERROR
 */
 export const RESERVED_MESSAGE_TYPES = [
         'REGISTER_CLIENT', 'REGISTRATION_SUCCESS', 'REGISTRATION_ERROR',
         'VR_CONTROLLER_STATE', 'NEW_CLIENT', 'CLIENT_DISCONNECTED',
-        'CALIBRATION_COMMIT', 'WALL_CALIBRATION', 'WALL_DISCONNECTED',
+        'CALIBRATION_COMMIT', 'SCREEN_CALIBRATION', 'SCREEN_DISCONNECTED',
         'GAME_EVENT', 'ERROR'
 ];
 
@@ -98,13 +98,13 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
         case 'NEW_CLIENT':
         case 'CLIENT_DISCONNECTED':
         case 'CALIBRATION_COMMIT':
-            if (clientType === 'WALL') {
+            if (clientType === 'SCREEN') {
                 const handlerFunction = eventActions.get(message.type);
                 if (typeof handlerFunction === 'function') handlerFunction(message.message);
             }
             break;
-        case 'WALL_CALIBRATION':
-        case 'WALL_DISCONNECTED':
+        case 'SCREEN_CALIBRATION':
+        case 'SCREEN_DISCONNECTED':
             if (clientType === 'VR') {
                 const handlerFunction = eventActions.get(message.type);
                 if (typeof handlerFunction === 'function') handlerFunction(message.message);
@@ -114,7 +114,7 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
             console.error('Server sent error:', message.message);
             break;
         case 'GAME_EVENT':
-            // Forward game-level events to any registered handler (both WALL and VR should receive)
+            // Forward game-level events to any registered handler (both SCREEN and VR should receive)
             {
                 const handlerFunction = eventActions.get('GAME_EVENT');
                 if (typeof handlerFunction === 'function') handlerFunction(message.message);

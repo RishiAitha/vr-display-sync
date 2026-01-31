@@ -6,7 +6,7 @@ module.exports = {
         index: './src/index.js',
         vr: './src/vr.js',
         desktop: './src/desktop.js',
-        wall: './src/wall.js',
+        screen: './src/screen.js',
     },
     output: {
         filename: '[name].js',

@@ -30,8 +30,8 @@ let backLabel = null;
 const EYE_HEIGHT = 1.6;
 
 // Calibration / rect state
-let wallWidth = null;
-let wallHeight = null;
+let screenWidth = null;
+let screenHeight = null;
 let aspectRatio = null;
 let topLeftCorner = [-0.5, 1.6, -2.0];
 let bottomRightCorner = [1.0, 0.8, -2.0];
@@ -232,7 +232,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
     const controllerConfigs = [controllers.right, controllers.left];
 
     if (!calibrated) {
-        statusDisplay.text = !aspectRatio ? 'Waiting for wall...' : 'Manual calibration: Use right controller. Squeeze to grab; press A to Save';
+        statusDisplay.text = !aspectRatio ? 'Waiting for screen...' : 'Manual calibration: Use right controller. Squeeze to grab; press A to Save';
         statusDisplay.sync();
     } else {
         statusDisplay.text = 'Ready | Press A to Recalibrate';
@@ -466,7 +466,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
         console.warn('restart-via-button error', e);
     }
 
-    // Normal drawing: send controller states to wall
+    // Normal drawing: send controller states to screen
     for (let i = 0; i < 2; i++) {
         const controller = controllerConfigs[i];
         if (!controller) continue;
@@ -587,9 +587,9 @@ function addScreenRect(scene) {
     updateWidgetPositions();
 }
 
-// ---------- Networking and input to wall ----------
+// ---------- Networking and input to screen ----------
 async function sendVRState(i, controller) {
-    if (!calibrated || !screenRect || !wallWidth || !wallHeight) return;
+    if (!calibrated || !screenRect || !screenWidth || !screenHeight) return;
     const { gamepad, raySpace, gripSpace } = controller;
     if (!raySpace || !gamepad) return;
     const rayHelperForController = i === 0 ? rightDrawingRayHelper : leftDrawingRayHelper;
@@ -603,8 +603,8 @@ async function sendVRState(i, controller) {
         rayHelperForController.position.copy(raySpace.position);
         rayHelperForController.quaternion.copy(raySpace.quaternion);
         const uv = intersection.uv;
-        const canvasX = uv.x * wallWidth;
-        const canvasY = (1 - uv.y) * wallHeight;
+        const canvasX = uv.x * screenWidth;
+        const canvasY = (1 - uv.y) * screenHeight;
         if (isNaN(canvasX) || isNaN(canvasY)) return;
         cm.sendMessage({
             type: 'VR_CONTROLLER_STATE',
@@ -643,9 +643,9 @@ async function sendVRState(i, controller) {
 // ---------- Calibration messages ----------
 function handleCalibration(message) {
     if (calibrated) return;
-    wallWidth = message.wallWidth;
-    wallHeight = message.wallHeight;
-    aspectRatio = wallWidth / wallHeight;
+    screenWidth = message.screenWidth;
+    screenHeight = message.screenHeight;
+    aspectRatio = screenWidth / screenHeight;
     if (sceneVar && !screenRect) {
         const center = new THREE.Vector3(0, -0.3, -0.6);
         rectXDistance = 1.0;
@@ -682,8 +682,8 @@ function updateStatus() {
 }
 
 cm.handleEvent('CLOSE', updateStatus);
-cm.handleEvent('WALL_CALIBRATION', handleCalibration);
-cm.handleEvent('WALL_DISCONNECTED', resetCalibration);
+cm.handleEvent('SCREEN_CALIBRATION', handleCalibration);
+cm.handleEvent('SCREEN_DISCONNECTED', resetCalibration);
 cm.handleEvent('GAME_EVENT', (message) => { try { gameAPI.onMessage(message); } catch (e) { console.error('gameAPI onMessage error', e); } });
 
 // Initialize XR scene
