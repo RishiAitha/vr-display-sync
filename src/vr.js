@@ -21,8 +21,6 @@ if (navigator.xr) {
 let floor;
 let screenRect;
 let rayHelper;
-let rightDrawingRayHelper;
-let leftDrawingRayHelper;
 let statusDisplay;
 let frontLabel = null;
 let backLabel = null;
@@ -325,8 +323,6 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 if (screenRect) screenRect.visible = true;
                 if (frontLabel) { if (frontLabel.parent) frontLabel.parent.remove(frontLabel); frontLabel = null; }
                 if (backLabel) { if (backLabel.parent) backLabel.parent.remove(backLabel); backLabel = null; }
-                if (rightDrawingRayHelper) rightDrawingRayHelper.visible = false;
-                if (leftDrawingRayHelper) leftDrawingRayHelper.visible = false;
             }
 
             // Update while grabbing
@@ -457,8 +453,6 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 if (widgetGroup) widgetGroup.visible = true;
                 if (sceneVar) spawnWidgets(sceneVar);
                 rayHelper.visible = true;
-                if (rightDrawingRayHelper) rightDrawingRayHelper.visible = false;
-                if (leftDrawingRayHelper) leftDrawingRayHelper.visible = false;
                 if (screenRect && screenRect.parent) { screenRect.parent.remove(screenRect); screenRect = null; }
             }
         }
@@ -572,6 +566,19 @@ function addScreenRect(scene) {
     });
 
     setTimeout(() => {
+        // If calibration completed in the meantime, remove any lingering labels
+        // and avoid re-showing them from this timeout callback.
+        if (calibrated) {
+            [frontLabel, backLabel].forEach((lbl) => {
+                try {
+                    if (!lbl) return;
+                    if (lbl.parent) lbl.parent.remove(lbl);
+                } catch (e) {}
+            });
+            frontLabel = null;
+            backLabel = null;
+            return;
+        }
         [frontLabel, backLabel].forEach((lbl) => {
             if (!lbl) return;
             if (lbl.material) {
@@ -592,16 +599,12 @@ async function sendVRState(i, controller) {
     if (!calibrated || !screenRect || !screenWidth || !screenHeight) return;
     const { gamepad, raySpace, gripSpace } = controller;
     if (!raySpace || !gamepad) return;
-    const rayHelperForController = i === 0 ? rightDrawingRayHelper : leftDrawingRayHelper;
     const raycaster = new THREE.Raycaster();
     const rayDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion);
     raycaster.set(raySpace.position, rayDirection);
     const intersects = raycaster.intersectObject(screenRect);
     if (intersects.length > 0) {
         const intersection = intersects[0];
-        rayHelperForController.visible = true;
-        rayHelperForController.position.copy(raySpace.position);
-        rayHelperForController.quaternion.copy(raySpace.quaternion);
         const uv = intersection.uv;
         const canvasX = uv.x * screenWidth;
         const canvasY = (1 - uv.y) * screenHeight;
@@ -635,8 +638,6 @@ async function sendVRState(i, controller) {
                 thumbstickY: XR_AXES.THUMBSTICK_Y !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_Y) : 0
             }
         });
-    } else {
-        rayHelperForController.visible = false;
     }
 }
 
