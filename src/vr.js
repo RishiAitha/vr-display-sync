@@ -596,49 +596,63 @@ function addScreenRect(scene) {
 
 // ---------- Networking and input to screen ----------
 async function sendVRState(i, controller) {
-    if (!calibrated || !screenRect || !screenWidth || !screenHeight) return;
+    // Only send VR state after calibration
+    if (!calibrated) return;
     const { gamepad, raySpace, gripSpace } = controller;
     if (!raySpace || !gamepad) return;
-    const raycaster = new THREE.Raycaster();
-    const rayDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion);
-    raycaster.set(raySpace.position, rayDirection);
-    const intersects = raycaster.intersectObject(screenRect);
-    if (intersects.length > 0) {
-        const intersection = intersects[0];
-        const uv = intersection.uv;
-        const canvasX = uv.x * screenWidth;
-        const canvasY = (1 - uv.y) * screenHeight;
-        if (isNaN(canvasX) || isNaN(canvasY)) return;
-        cm.sendMessage({
-            type: 'VR_CONTROLLER_STATE',
-            message: {
-                controllerType: i === 0 ? 'right' : 'left',
-                canvasX: Math.round(canvasX),
-                canvasY: Math.round(canvasY),
-                position: {
-                    x: gripSpace.position.x,
-                    y: gripSpace.position.y,
-                    z: gripSpace.position.z
-                },
-                quaternion: {
-                    x: gripSpace.quaternion.x,
-                    y: gripSpace.quaternion.y,
-                    z: gripSpace.quaternion.z,
-                    w: gripSpace.quaternion.w
-                },
-                topLeftCorner: [...topLeftCorner],
-                bottomRightCorner: [...bottomRightCorner],
-                rectXDistance,
-                rectYDistance,
-                triggerButtonState: gamepad.getButton(XR_BUTTONS.TRIGGER),
-                squeezeButtonState: gamepad.getButton(XR_BUTTONS.SQUEEZE),
-                button1State: XR_BUTTONS.BUTTON_1 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_1) : false,
-                button2State: XR_BUTTONS.BUTTON_2 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_2) : false,
-                thumbstickX: XR_AXES.THUMBSTICK_X !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_X) : 0,
-                thumbstickY: XR_AXES.THUMBSTICK_Y !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_Y) : 0
+
+    // Base payload always includes pose and button/axis states
+    const baseMsg = {
+        controllerType: i === 0 ? 'right' : 'left',
+        position: {
+            x: gripSpace.position.x,
+            y: gripSpace.position.y,
+            z: gripSpace.position.z
+        },
+        quaternion: {
+            x: gripSpace.quaternion.x,
+            y: gripSpace.quaternion.y,
+            z: gripSpace.quaternion.z,
+            w: gripSpace.quaternion.w
+        },
+        topLeftCorner: [...topLeftCorner],
+        bottomRightCorner: [...bottomRightCorner],
+        rectXDistance,
+        rectYDistance,
+        triggerButtonState: gamepad.getButton(XR_BUTTONS.TRIGGER),
+        squeezeButtonState: gamepad.getButton(XR_BUTTONS.SQUEEZE),
+        button1State: XR_BUTTONS.BUTTON_1 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_1) : false,
+        button2State: XR_BUTTONS.BUTTON_2 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_2) : false,
+        thumbstickX: XR_AXES.THUMBSTICK_X !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_X) : 0,
+        thumbstickY: XR_AXES.THUMBSTICK_Y !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_Y) : 0
+    };
+
+    // If screenRect and sizes are available, compute canvas coords when ray intersects
+    if (screenRect && screenWidth && screenHeight) {
+        const raycaster = new THREE.Raycaster();
+        const rayDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion);
+        raycaster.set(raySpace.position, rayDirection);
+        const intersects = raycaster.intersectObject(screenRect);
+        if (intersects.length > 0) {
+            const intersection = intersects[0];
+            const uv = intersection.uv;
+            const canvasX = uv.x * screenWidth;
+            const canvasY = (1 - uv.y) * screenHeight;
+            if (!isNaN(canvasX) && !isNaN(canvasY)) {
+                baseMsg.canvasX = Math.round(canvasX);
+                baseMsg.canvasY = Math.round(canvasY);
+                baseMsg.onScreen = true;
+            } else {
+                baseMsg.onScreen = false;
             }
-        });
+        } else {
+            baseMsg.onScreen = false;
+        }
+    } else {
+        baseMsg.onScreen = false;
     }
+
+    cm.sendMessage({ type: 'VR_CONTROLLER_STATE', message: baseMsg });
 }
 
 // ---------- Calibration messages ----------

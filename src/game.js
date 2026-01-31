@@ -56,13 +56,18 @@ export default {
         if (!msg) return;
 
         // VR controller updates forwarded by the host
+        // Sends canvasX and canvasY if controller raycast intersects screen
         if (msg.type === 'VR_CONTROLLER_STATE' && msg.message) {
             const state = msg.message;
             // state.canvasX / state.canvasY are pixel coords on the screen canvas
             // Example: detect trigger press
             const trigger = state.triggerButtonState || 0;
             if (trigger > 0.5) {
-                console.log('Shot at', state.canvasX, state.canvasY, 'from', state.userID);
+                if (canvasX && canvasY) {
+                    console.log('Shot at', state.canvasX, state.canvasY, 'from', state.userID);
+                } else {
+                    console.log('Shot from', state.userID);
+                }
             }
             return;
         }
