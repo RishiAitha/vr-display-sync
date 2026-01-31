@@ -4,6 +4,9 @@ import * as cm from './clientManager.js';
 import { XR_BUTTONS, XR_AXES } from 'gamepad-wrapper';
 import { Text } from 'troika-three-text';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as gameAPI from './gameAPI.js';
+import game from './game.js';
+gameAPI.registerGame(game);
 
 // Redirect to desktop if XR not supported
 if (navigator.xr) {
@@ -38,6 +41,7 @@ let calibrated = false;
 let fineTuneMode = true;
 let selectedCorner = 'topLeft';
 let cornerDistance = 2.0;
+let gameStartedVR = false;
 
 // Scene refs
 let sceneVar = null;
@@ -207,16 +211,6 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
     rayHelper.visible = false;
     scene.add(rayHelper);
 
-    const rightRayGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5)]);
-    rightDrawingRayHelper = new THREE.Line(rightRayGeometry, new THREE.LineBasicMaterial({ color: 0x0000ff }));
-    rightDrawingRayHelper.visible = false;
-    scene.add(rightDrawingRayHelper);
-
-    const leftRayGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5)]);
-    leftDrawingRayHelper = new THREE.Line(leftRayGeometry, new THREE.LineBasicMaterial({ color: 0xff0000 }));
-    leftDrawingRayHelper.visible = false;
-    scene.add(leftDrawingRayHelper);
-
     statusDisplay = new Text();
     statusDisplay.anchorX = 'left';
     statusDisplay.anchorY = 'top';
@@ -231,6 +225,10 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
 
 // ---------- Frame loop ----------
 async function onFrame(delta, time, {scene, camera, renderer, player, controllers}) {
+    // Drive game updates when started
+    if (gameStartedVR) {
+        try { gameAPI.updateVR(delta, time, { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { console.error('game updateVR error', e); }
+    }
     const controllerConfigs = [controllers.right, controllers.left];
 
     if (!calibrated) {
@@ -314,6 +312,11 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                     }
                 });
                 calibrated = true;
+                // Start the active game once calibration is committed
+                if (!gameStartedVR) {
+                    gameStartedVR = true;
+                    try { await gameAPI.startVR({ scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { console.error('game startVR error', e); }
+                }
                 fineTuneMode = false;
                 rayHelper.visible = false;
                 widgetsSpawned = false;
@@ -681,6 +684,7 @@ function updateStatus() {
 cm.handleEvent('CLOSE', updateStatus);
 cm.handleEvent('WALL_CALIBRATION', handleCalibration);
 cm.handleEvent('WALL_DISCONNECTED', resetCalibration);
+cm.handleEvent('GAME_EVENT', (message) => { try { gameAPI.onMessage(message); } catch (e) { console.error('gameAPI onMessage error', e); } });
 
 // Initialize XR scene
 init(setupScene, onFrame);

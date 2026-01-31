@@ -1,4 +1,7 @@
 import * as cm from './clientManager.js';
+import * as gameAPI from './gameAPI.js';
+import game from './game.js';
+gameAPI.registerGame(game);
 
 document.body.style.margin = '0';
 document.body.style.padding = '0';
@@ -14,6 +17,8 @@ cm.registerToServer('WALL')
                 wallHeight: window.innerHeight
             }
         });
+        // Start the wall-side game (if provided)
+        try { gameAPI.startWall({ canvas: targetCanvas, sendGameMessage: gameAPI.sendGameMessage, committedCalibration }); } catch (e) { console.error('gameAPI startWall error', e); }
     })
     .catch(error => {
         console.error('Failed to register:', error);
@@ -29,21 +34,7 @@ document.body.appendChild(targetCanvas);
 const targetImage = new Image();
 targetImage.src = '/assets/target.png';
 
-const clearButton = document.createElement('button');
-clearButton.textContent = 'Clear Canvas';
-clearButton.style.position = 'absolute';
-clearButton.style.bottom = '20px';
-clearButton.style.left = '20px';
-clearButton.style.padding = '10px 20px';
-clearButton.style.fontSize = '16px';
-clearButton.style.zIndex = '1000';
-clearButton.style.cursor = 'pointer';
-clearButton.onclick = () => {
-    const ctx = targetCanvas.getContext('2d');
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
-};
-document.body.appendChild(clearButton);
+// Clear button and drawing are handled by the active game (via startWall)
 
 const controllerStates = new Map();
 let committedCalibration = null;
@@ -68,31 +59,10 @@ function drawCalibrationOverlay(calib) {
 }
 
 function handleVRState(message) {
-    const ctx = targetCanvas.getContext('2d');
-
-    if (!controllerStates.has(message.userID)) {
-        controllerStates.set(message.userID, {});
-    }
+    // Forward VR controller state to the active game for drawing/processing
+    try { gameAPI.onMessage({ type: 'VR_CONTROLLER_STATE', message }); } catch (e) { console.error('game onMessage error', e); }
+    if (!controllerStates.has(message.userID)) controllerStates.set(message.userID, {});
     controllerStates.get(message.userID)[message.controllerType] = message;
-
-    console.log('Wall received VR state:', {
-        controller: message.controllerType,
-        canvasX: message.canvasX,
-        canvasY: message.canvasY,
-        trigger: message.triggerButtonState,
-        userID: message.userID
-    });
-
-    const canvasX = message.canvasX;
-    const canvasY = message.canvasY;
-    if (canvasX == null || canvasY == null || isNaN(canvasX) || isNaN(canvasY)) return;
-
-    if (message.triggerButtonState > 0.1) {
-        ctx.fillStyle = message.controllerType === 'right' ? 'blue' : 'red';
-        ctx.beginPath();
-        ctx.arc(canvasX, canvasY, 5, 0, Math.PI * 2);
-        ctx.fill();
-    }
 }
 
 function handleNewClient(message) {
@@ -124,3 +94,14 @@ cm.handleEvent('CALIBRATION_COMMIT', (message) => {
     console.log('Wall received CALIBRATION_COMMIT (ignored overlay):', message);
     committedCalibration = message;
 });
+cm.handleEvent('GAME_EVENT', (message) => { try { gameAPI.onMessage(message); } catch (e) { console.error('gameAPI onMessage error', e); } });
+
+// Optional per-frame wall update (no-op if game doesn't implement it)
+let __lastWallTime = performance.now();
+function __wallTick(t) {
+    const delta = (t - __lastWallTime) / 1000;
+    __lastWallTime = t;
+    try { gameAPI.updateWall(delta, t / 1000, { canvas: targetCanvas, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { /* ignore */ }
+    requestAnimationFrame(__wallTick);
+}
+requestAnimationFrame(__wallTick);

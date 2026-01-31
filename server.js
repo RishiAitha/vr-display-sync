@@ -63,6 +63,12 @@ function handleMessage(ws, data) {
                 sendMessage(wallClient, { type: data.type, message: { ...data.message, userID } });
             }
             break;
+        case 'GAME_EVENT':
+            // Forward game-level events to all connected clients (so games can coordinate)
+            for (const [clientWS] of connectedClients) {
+                sendMessage(clientWS, { type: 'GAME_EVENT', message: data.message });
+            }
+            break;
         default:
             sendError(ws, 'Data type has no matches');
             break;

@@ -3,6 +3,25 @@ let connectionState = 'disconnected';
 let clientType = null;
 const eventActions = new Map();
 
+/*
+    Reserved message types used by the system. Game authors should avoid
+    using these as top-level `type` values for their own messages to
+    prevent collisions with infrastructure messages. Import `RESERVED_MESSAGE_TYPES`
+    if you need to check for collisions.
+
+    Examples:
+        REGISTER_CLIENT, REGISTRATION_SUCCESS, REGISTRATION_ERROR,
+        VR_CONTROLLER_STATE, NEW_CLIENT, CLIENT_DISCONNECTED,
+        CALIBRATION_COMMIT, WALL_CALIBRATION, WALL_DISCONNECTED,
+        GAME_EVENT, ERROR
+*/
+export const RESERVED_MESSAGE_TYPES = [
+        'REGISTER_CLIENT', 'REGISTRATION_SUCCESS', 'REGISTRATION_ERROR',
+        'VR_CONTROLLER_STATE', 'NEW_CLIENT', 'CLIENT_DISCONNECTED',
+        'CALIBRATION_COMMIT', 'WALL_CALIBRATION', 'WALL_DISCONNECTED',
+        'GAME_EVENT', 'ERROR'
+];
+
 export function registerToServer(type) {
     return new Promise((resolve, reject) => {
         if (connectionState === 'connecting') return reject(new Error('Connection already in progress'));
@@ -94,6 +113,13 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
         case 'ERROR':
             console.error('Server sent error:', message.message);
             break;
+        case 'GAME_EVENT':
+            // Forward game-level events to any registered handler (both WALL and VR should receive)
+            {
+                const handlerFunction = eventActions.get('GAME_EVENT');
+                if (typeof handlerFunction === 'function') handlerFunction(message.message);
+            }
+            break;
         default:
             sendError('Data type has no matches');
             break;
@@ -136,4 +162,13 @@ export function getConnectionState() {
 
 export function isRegistered() {
     return ws && ws.readyState === WebSocket.OPEN && connectionState === 'registered';
+}
+
+export function sendGameMessage(payload) {
+    // Convenience wrapper for game-level events
+    // Warn if an author accidentally uses a reserved message name as an action
+    if (payload && payload.action && RESERVED_MESSAGE_TYPES.includes(String(payload.action).toUpperCase())) {
+        console.warn('sendGameMessage: payload.action conflicts with RESERVED_MESSAGE_TYPES — choose a different action name');
+    }
+    sendMessage({ type: 'GAME_EVENT', message: payload });
 }
