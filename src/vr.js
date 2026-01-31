@@ -628,8 +628,6 @@ async function sendVRState(i, controller) {
                 squeezeButtonState: gamepad.getButton(XR_BUTTONS.SQUEEZE),
                 button1State: XR_BUTTONS.BUTTON_1 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_1) : false,
                 button2State: XR_BUTTONS.BUTTON_2 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_2) : false,
-                button3State: XR_BUTTONS.BUTTON_3 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_3) : false,
-                button4State: XR_BUTTONS.BUTTON_4 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_4) : false,
                 thumbstickX: XR_AXES.THUMBSTICK_X !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_X) : 0,
                 thumbstickY: XR_AXES.THUMBSTICK_Y !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_Y) : 0
             }
