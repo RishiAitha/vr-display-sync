@@ -63,7 +63,7 @@ export default {
             // Example: detect trigger press
             const trigger = state.triggerButtonState || 0;
             if (trigger > 0.5) {
-                if (canvasX && canvasY) {
+                if (state.canvasX && state.canvasY) {
                     console.log('Shot at', state.canvasX, state.canvasY, 'from', state.userID);
                 } else {
                     console.log('Shot from', state.userID);
