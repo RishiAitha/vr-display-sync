@@ -41,6 +41,11 @@ let selectedCorner = 'topLeft';
 let cornerDistance = 2.0;
 let gameStartedVR = false;
 
+// Latest per-frame screen intersection state (populated each frame)
+let latestScreenState = { right: { onScreen: false }, left: { onScreen: false } };
+// Latest screen metadata snapshot
+let latestScreenMeta = { screenWidth: null, screenHeight: null, topLeftCorner: [...topLeftCorner], bottomRightCorner: [...bottomRightCorner], rectXDistance: null, rectYDistance: null };
+
 // Scene refs
 let sceneVar = null;
 let camVar = null;
@@ -223,9 +228,50 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
 
 // ---------- Frame loop ----------
 async function onFrame(delta, time, {scene, camera, renderer, player, controllers}) {
-    // Drive game updates when started
+    // Compute per-controller screen intersection state and screen metadata (store to shared latest values)
+    latestScreenMeta = {
+        screenWidth,
+        screenHeight,
+        topLeftCorner: [...topLeftCorner],
+        bottomRightCorner: [...bottomRightCorner],
+        rectXDistance,
+        rectYDistance
+    };
+    // reset defaults
+    latestScreenState.right = { onScreen: false };
+    latestScreenState.left = { onScreen: false };
+    if (calibrated && screenRect && screenWidth && screenHeight) {
+        ['right', 'left'].forEach((side) => {
+            const controller = controllers && controllers[side];
+            if (!controller) return;
+            const { raySpace } = controller;
+            if (!raySpace) return;
+            const rayDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion);
+            const raycaster = new THREE.Raycaster();
+            raycaster.set(raySpace.position, rayDirection);
+            const intersects = raycaster.intersectObject(screenRect);
+            if (intersects.length > 0) {
+                const uv = intersects[0].uv;
+                const canvasX = uv.x * screenWidth;
+                const canvasY = (1 - uv.y) * screenHeight;
+                if (!isNaN(canvasX) && !isNaN(canvasY)) {
+                    latestScreenState[side] = { onScreen: true, canvasX: Math.round(canvasX), canvasY: Math.round(canvasY), uv };
+                } else {
+                    latestScreenState[side] = { onScreen: false };
+                }
+            } else {
+                latestScreenState[side] = { onScreen: false };
+            }
+        });
+    }
+
+    // Drive game updates when started, provide screenState + screenMeta in the context
     if (gameStartedVR) {
-        try { gameAPI.updateVR(delta, time, { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { console.error('game updateVR error', e); }
+        try {
+            gameAPI.updateVR(delta, time, { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage, screenState: latestScreenState, screenMeta: latestScreenMeta, screenRect });
+        } catch (e) {
+            console.error('game updateVR error', e);
+        }
     }
     const controllerConfigs = [controllers.right, controllers.left];
 
@@ -599,11 +645,12 @@ async function sendVRState(i, controller) {
     // Only send VR state after calibration
     if (!calibrated) return;
     const { gamepad, raySpace, gripSpace } = controller;
-    if (!raySpace || !gamepad) return;
+    if (!raySpace || !gamepad || !gripSpace) return;
 
+    const controllerType = i === 0 ? 'right' : 'left';
     // Base payload always includes pose and button/axis states
     const baseMsg = {
-        controllerType: i === 0 ? 'right' : 'left',
+        controllerType,
         position: {
             x: gripSpace.position.x,
             y: gripSpace.position.y,
@@ -627,27 +674,12 @@ async function sendVRState(i, controller) {
         thumbstickY: XR_AXES.THUMBSTICK_Y !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_Y) : 0
     };
 
-    // If screenRect and sizes are available, compute canvas coords when ray intersects
-    if (screenRect && screenWidth && screenHeight) {
-        const raycaster = new THREE.Raycaster();
-        const rayDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion);
-        raycaster.set(raySpace.position, rayDirection);
-        const intersects = raycaster.intersectObject(screenRect);
-        if (intersects.length > 0) {
-            const intersection = intersects[0];
-            const uv = intersection.uv;
-            const canvasX = uv.x * screenWidth;
-            const canvasY = (1 - uv.y) * screenHeight;
-            if (!isNaN(canvasX) && !isNaN(canvasY)) {
-                baseMsg.canvasX = Math.round(canvasX);
-                baseMsg.canvasY = Math.round(canvasY);
-                baseMsg.onScreen = true;
-            } else {
-                baseMsg.onScreen = false;
-            }
-        } else {
-            baseMsg.onScreen = false;
-        }
+    // Fill canvas coords and onScreen from the precomputed per-frame state
+    const hit = latestScreenState[controllerType];
+    if (hit && hit.onScreen && Number.isFinite(hit.canvasX) && Number.isFinite(hit.canvasY)) {
+        baseMsg.canvasX = hit.canvasX;
+        baseMsg.canvasY = hit.canvasY;
+        baseMsg.onScreen = true;
     } else {
         baseMsg.onScreen = false;
     }

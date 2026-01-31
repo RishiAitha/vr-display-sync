@@ -21,7 +21,11 @@ export default {
     },
 
     // Per-frame VR update. delta,time in seconds. context same as startVR.
-    // context: { scene, camera, renderer, player, controllers, sendGameMessage }
+    // context: { scene, camera, renderer, player, controllers, sendGameMessage,
+    //            screenState, screenMeta, screenRect }
+    // - `screenState`: object with `right` and `left` entries, each `{ onScreen, canvasX, canvasY, uv }` (per-frame intersection)
+    // - `screenMeta`: metadata snapshot `{ screenWidth, screenHeight, topLeftCorner, bottomRightCorner, rectXDistance, rectYDistance }`
+    // - `screenRect`: the THREE.Mesh used to represent the screen rect (optional)
     updateVR(delta, time, context) {
         // Optional per-frame VR logic
     },
@@ -41,17 +45,23 @@ export default {
         // Optional per-frame screen logic
     },
 
-    /*
-      Incoming messages handler.
+        /*
+            Incoming messages handler.
 
-      Forwarded VR controller `message` contains:
-        controllerType, canvasX, canvasY, position, quaternion,
-        topLeftCorner, bottomRightCorner, recontextDistance, rectYDistance,
-        triggerButtonState, squeezeButtonState, button1State, button2State,
-        thumbstickX, thumbstickY, userID
+            Forwarded VR controller `message` contains (when a controller ray intersects the screen):
+                - controllerType: 'right'|'left'
+                - canvasX, canvasY: pixel coordinates on the screen canvas (only present if `onScreen` is true)
+                - onScreen: boolean indicating whether the ray intersected the screen rect
+                - position, quaternion: controller pose (grip space)
+                - topLeftCorner, bottomRightCorner, rectXDistance, rectYDistance: screen rect geometry
+                - triggerButtonState, squeezeButtonState, button1State, button2State: button values
+                - thumbstickX, thumbstickY: axis values
+                - userID: originating user id (if present)
 
-      Handle messages sent via `sendGameMessage` here as you like.
-    */
+            Additionally, the VR-side `updateVR` context receives `screenState` and `screenMeta` for per-frame intersection and metadata.
+
+            Handle messages sent via `sendGameMessage` here as you like.
+        */
     onMessage(msg) {
         if (!msg) return;
 
