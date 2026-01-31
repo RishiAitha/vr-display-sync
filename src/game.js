@@ -11,25 +11,32 @@
 export default {
     // Instance variables here
 
+    // VR handling
+    // Use context.sendGameMessage(payload) to emit game events.
 
-    // VR-side initialization hook. context: { scene, camera, renderer, player, controllers, sendGameMessage }
+    // VR-side initialization hook.
+    // context: { scene, camera, renderer, player, controllers, sendGameMessage }
     async startVR(context) {
         // Called once on VR client after scene + calibration are ready.
-        // Use context.sendGameMessage(payload) to emit game events.
     },
 
     // Per-frame VR update. delta,time in seconds. context same as startVR.
+    // context: { scene, camera, renderer, player, controllers, sendGameMessage }
     updateVR(delta, time, context) {
         // Optional per-frame VR logic
     },
 
-    // Screen-side initialization. context: { canvas, sendGameMessage }
+    // Screen handling
+    // Use context.canvas to draw, context.sendGameMessage to emit events.
+
+    // Screen-side initialization.
+    // context: { canvas, sendGameMessage }
     async startScreen(context) {
         // Called once on Screen after registration and canvas creation.
-        // Use context.canvas to draw, context.sendGameMessage to emit events.
     },
 
     // Optional per-frame Screen update. delta,time in seconds.
+    // context: { canvas, sendGameMessage }
     updateScreen(delta, time, context) {
         // Optional per-frame screen logic
     },
@@ -60,14 +67,14 @@ export default {
             return;
         }
 
-        // New client connected (useful for join UI)
+        // New client connected
         if (msg.type === 'NEW_CLIENT' && msg.message) {
             const info = msg.message; // { type, userID }
             console.log('Client joined:', info.type, info.userID);
             return;
         }
 
-        // Client disconnected (cleanup)
+        // Client disconnected
         if (msg.type === 'CLIENT_DISCONNECTED' && msg.message) {
             const info = msg.message; // { type, userID }
             console.log('Client left:', info.userID);
@@ -75,7 +82,13 @@ export default {
         }
 
         // Generic game-level payloads sent via sendGameMessage(payload)
-        
+        if (msg.type === 'GAME_EVENT' && msg.message) {
+            const info = msg.message;
+
+            // Handle your game messages here
+
+            return;
+        }
 
         // Fallback: raw payloads
         console.log('game onMessage received', msg);
