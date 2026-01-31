@@ -21,10 +21,8 @@ function updateStatus() {
 
 // Register as desktop client
 cm.registerToServer('DESKTOP')
-    .then(response => {
-        updateStatus();
-    })
-    .catch(error => {
+    .then(updateStatus)
+    .catch((error) => {
         console.error('Failed to register:', error);
         updateStatus();
     });
