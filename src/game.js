@@ -1,11 +1,5 @@
 /*
-  Game template
-
-  RESERVED MESSAGE TYPES (do not use these as top-level `type` values in game messages):
-    REGISTER_CLIENT, REGISTRATION_SUCCESS, REGISTRATION_ERROR,
-    VR_CONTROLLER_STATE, NEW_CLIENT, CLIENT_DISCONNECTED,
-    CALIBRATION_COMMIT, SCREEN_CALIBRATION, SCREEN_DISCONNECTED,
-    GAME_EVENT, ERROR
+    Game template
 */
 
 export default {

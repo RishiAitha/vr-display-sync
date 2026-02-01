@@ -166,9 +166,5 @@ export function isRegistered() {
 
 export function sendGameMessage(payload) {
     // Convenience wrapper for game-level events
-    // Warn if an author accidentally uses a reserved message name as an action
-    if (payload && payload.action && RESERVED_MESSAGE_TYPES.includes(String(payload.action).toUpperCase())) {
-        console.warn('sendGameMessage: payload.action conflicts with RESERVED_MESSAGE_TYPES — choose a different action name');
-    }
     sendMessage({ type: 'GAME_EVENT', message: payload });
 }
