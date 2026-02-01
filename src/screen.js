@@ -39,25 +39,6 @@ targetImage.src = '/assets/target.png';
 const controllerStates = new Map();
 let committedCalibration = null;
 
-function drawCalibrationOverlay(calib) {
-    if (!calib) return;
-    const ctx = targetCanvas.getContext('2d');
-    const margin = 0.1;
-    const widthPx = targetCanvas.width * (1 - margin * 2);
-    const heightPx = widthPx * (calib.rectYDistance / calib.rectXDistance);
-    const x = (targetCanvas.width - widthPx) / 2;
-    const y = (targetCanvas.height - heightPx) / 2;
-
-    ctx.save();
-    ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
-    ctx.strokeStyle = 'rgba(0,128,0,0.9)';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(x, y, widthPx, heightPx);
-    ctx.restore();
-}
-
 function handleVRState(message) {
     // Forward VR controller state to the active game for drawing/processing
     try { gameAPI.onMessage({ type: 'VR_CONTROLLER_STATE', message }); } catch (e) { console.error('game onMessage error', e); }
