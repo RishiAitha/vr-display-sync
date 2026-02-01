@@ -45,23 +45,23 @@ export default {
         // Optional per-frame screen logic
     },
 
-        /*
-            Incoming messages handler.
+    /*
+        Incoming messages handler.
 
-            Forwarded VR controller `message` contains (when a controller ray intersects the screen):
-                - controllerType: 'right'|'left'
-                - canvasX, canvasY: pixel coordinates on the screen canvas (only present if `onScreen` is true)
-                - onScreen: boolean indicating whether the ray intersected the screen rect
-                - position, quaternion: controller pose (grip space)
-                - topLeftCorner, bottomRightCorner, rectXDistance, rectYDistance: screen rect geometry
-                - triggerButtonState, squeezeButtonState, button1State, button2State: button values
-                - thumbstickX, thumbstickY: axis values
-                - userID: originating user id (if present)
+        Forwarded VR controller `message` contains (when a controller ray intersects the screen):
+            - controllerType: 'right'|'left'
+            - canvasX, canvasY: pixel coordinates on the screen canvas (only present if `onScreen` is true)
+            - onScreen: boolean indicating whether the ray intersected the screen rect
+            - position, quaternion: controller pose (grip space)
+            - topLeftCorner, bottomRightCorner, rectXDistance, rectYDistance: screen rect geometry
+            - triggerButtonState, squeezeButtonState, button1State, button2State: button values
+            - thumbstickX, thumbstickY: axis values
+            - userID: originating user id (if present)
 
-            Additionally, the VR-side `updateVR` context receives `screenState` and `screenMeta` for per-frame intersection and metadata.
+        Additionally, the VR-side `updateVR` context receives `screenState` and `screenMeta` for per-frame intersection and metadata.
 
-            Handle messages sent via `sendGameMessage` here as you like.
-        */
+        Handle messages sent via `sendGameMessage` here as you like.
+    */
     onMessage(msg) {
         if (!msg) return;
 
