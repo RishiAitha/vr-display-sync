@@ -11,6 +11,8 @@
 ### Purpose
 - Use `game.js` to develop games or other experiences that take advantage of the combined system.
 - The `game.js` file runs on every connected client, but different API methods will be called based on which client type is running the file.
+- More specifically, the VR clients will run `startVR` and `updateVR`, while the screen client runs `startScreen` and `updateScreen`.
+    - Both client types can send out broadcasts with `sendGameMessage` and recieve messages (although some default ones are only sent to certain client types) with `onMessage`.
 - The "screen" refers to the single display client that shows a JavaScript canvas for interaction.
 - The "vr" client refers to any number of clients connected in the WebXR page.
 
