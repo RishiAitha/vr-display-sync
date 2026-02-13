@@ -11,13 +11,13 @@ const eventActions = new Map();
 
     Examples:
         REGISTER_CLIENT, REGISTRATION_SUCCESS, REGISTRATION_ERROR,
-        VR_CONTROLLER_STATE, NEW_CLIENT, CLIENT_DISCONNECTED,
+        NEW_CLIENT, CLIENT_DISCONNECTED,
         CALIBRATION_COMMIT, SCREEN_CALIBRATION, SCREEN_DISCONNECTED,
         GAME_EVENT, ERROR
 */
 export const RESERVED_MESSAGE_TYPES = [
         'REGISTER_CLIENT', 'REGISTRATION_SUCCESS', 'REGISTRATION_ERROR',
-        'VR_CONTROLLER_STATE', 'NEW_CLIENT', 'CLIENT_DISCONNECTED',
+        'NEW_CLIENT', 'CLIENT_DISCONNECTED',
         'CALIBRATION_COMMIT', 'SCREEN_CALIBRATION', 'SCREEN_DISCONNECTED',
         'GAME_EVENT', 'ERROR'
 ];
@@ -94,7 +94,6 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
             connectionState = 'connected';
             if (reject) reject(new Error(message.message));
             break;
-        case 'VR_CONTROLLER_STATE':
         case 'NEW_CLIENT':
         case 'CLIENT_DISCONNECTED':
         case 'CALIBRATION_COMMIT':

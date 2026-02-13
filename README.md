@@ -25,16 +25,34 @@
         - renderer: THREE.js WebGlRenderer
         - player: group containing camera and controller spaces
         - controllers: dictionary of left and right controllers, each holding respective raySpace, gripSpace, and gamepad (GamepadWrapper)
+            - raySpace: controller ray origin/direction pose (position, quaternion)
+            - gripSpace: controller grip pose for physical position (position, quaternion)
+            - gamepad: GamepadWrapper with methods getButton(XR_BUTTONS.TRIGGER), getButtonDown(), getButtonUp(), getAxis(XR_AXES.THUMBSTICK_X)
         - sendGameMessage: method to send message packets with type GAME_EVENT for additional shared game logic
 
 - `updateVR(delta, time, context)`
 	- Runs every frame
     - Delta and time in seconds (delta is time from last frame, time is total time passed)
 	- `context` contains the same fields as `startVR` with additional fields:
+        - controllers: access controller input here (NOT through messages)
+            - Buttons: `controllers.right.gamepad.getButton(XR_BUTTONS.TRIGGER)` returns 0-1 value
+            - Button events: `getButtonDown()` for press, `getButtonUp()` for release (detects edges)
+            - Axes: `controllers.right.gamepad.getAxis(XR_AXES.THUMBSTICK_X)` returns -1 to 1
+            - Position: `controllers.right.gripSpace.position` (THREE.Vector3)
+            - Rotation: `controllers.right.gripSpace.quaternion` (THREE.Quaternion)
         - screenState: holds raycast intersection status and position for left and right controllers and screen
-            - if onScreen is true, sends canvasX, canvasY, hitPoint (WebXR coords), and uv of intersection
+            - `screenState.right` and `screenState.left` contain:
+                - onScreen: boolean, true if controller ray intersects screen
+                - canvasX, canvasY: pixel coordinates on screen canvas (only when onScreen is true)
+                - hitPoint: THREE.Vector3 world position of intersection in WebXR space
+                - uv: object with x, y properties (0-1 normalized coordinates on screen rect)
         - screenMeta: width, height, corner positions, screen rectangle scaling
-        - screenRect: THREE.Mesh representing calibrated screen rectangle
+            - screenWidth, screenHeight: canvas dimensions in pixels
+            - topLeftCorner: [x, y, z] array of screen top-left corner in WebXR world coordinates
+            - bottomRightCorner: [x, y, z] array of screen bottom-right corner in WebXR world coordinates
+            - rectXDistance: physical horizontal width of screen rectangle in meters
+            - rectYDistance: physical vertical height of screen rectangle in meters
+        - screenRect: THREE.Mesh representing calibrated screen rectangle (useful for custom raycasting if needed)
 
 - `startScreen(context)`
 	- Called once on the Screen client. `context` contains `{ canvas, sendGameMessage }` and should be used to set up drawing and event handlers
@@ -42,42 +60,31 @@
 - `updateScreen(delta, time, context)`
 	- Runs every frame for screen canvas updates
     - Useful for animation, events, gameplay changes, and anything else happening on the screen canvas
+    - Note: Screen client does NOT have access to VR controller data in context - use GAME_EVENT messages via sendGameMessage to communicate from VR to screen
 
 ### Messaging helpers
 - `sendGameMessage(payload)`
     - Sends any message payload to all connected clients with message.type being "GAME_EVENT" and payload being message.message (actual message content)
+    - Used for CUSTOM game events to communicate between VR and screen clients
+    - VR controller input is accessed via context.controllers in updateVR, not sent as messages
+    - Example: `sendGameMessage({ event: 'SHOT', x: 100, y: 200, playerId: 'abc' })`
 
 - `onMessage(msg)` — incoming message handler.
-	- Some default messages are included for ease of use:
-    - Check game.js to see some uses of these broadcasts.
-		- `VR_CONTROLLER_STATE` — broadcasted every frame from VR clients to screen client after calibration.
-            - `controllerType`: if controller is 'left' or 'right'
-            - `onScreen`: bool true if raycast is currently intersecting
-            - `canvasX`/`canvasY`: pixel coords of raycast when `onScreen`
-            - `position`: xyz of controller
-            - `quaternion`: rotation of controller
-            - `topLeftCorner`: xyz of corner of calibrated screen rectangle display
-            - `bottomRightCorner`: opposite of topLeftCorner
-            - `rectXDistance`: horizontal distance across calibrated screen rect (useful for weird angular projections)
-            - `rectYDistance`: vertical height of rect
-            - `triggerButtonState`: decimal trigger button state
-            - `squeezeButtonState`: decimal grab button state
-            - `button1State`: A button on Quest
-            - `button2State`: B button on Quest
-            - `thumbstickX`: thumbstick X position
-            - `thumbstickY`: thumbstick Y position
-            - `userID`: VR client user ID (great for scores or other info)
+	- System messages (handled automatically by framework):
 		- `SCREEN_CALIBRATION`: screen reports sizes to VR for calibration -- probably not useful as games begin after calibration finishes
 		- `CALIBRATION_COMMIT`: VR sends commit to screen when user saves calibration.
+		- `NEW_CLIENT` / `CLIENT_DISCONNECTED`: notifications about other clients connecting/disconnecting
+            - msg.message contains: `{ type: 'VR' or 'SCREEN', userID: 'uuid-string' }`
+	- Game messages (created by you):
 		- `GAME_EVENT`: arbitrary game-level events emitted via `sendGameMessage` (you create these!)
-		- `NEW_CLIENT` / `CLIENT_DISCONNECTED`: notifications about other clients.
+            - Example handling: `if (msg.type === 'GAME_EVENT' && msg.message.event === 'SHOT') { handleShot(msg.message.x, msg.message.y); }`
 
 ## File Reference
 - `src/vr.js`
 	- Handles WebXR session setup, screen calibration, basic raycast calculations, and other VR-side setup.
 
 - `src/screen.js`
-	- Manages the browser screen-side client: canvas creation, receiving VR state messages, and sending calibration and game messages back to the host.
+	- Manages the browser screen-side client: canvas creation, sending calibration messages, and handling GAME_EVENT messages.
 
 - `src/clientManager.js`
 	- Networking layer to register clients, send/receive messages, and route events between VR, screen, and server.

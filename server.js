@@ -55,14 +55,6 @@ function handleMessage(ws, data) {
                 }
             }
             break;
-        case 'VR_CONTROLLER_STATE':
-            const senderClientInfo = connectedClients.get(ws);
-            const userID = senderClientInfo.userID;
-            let screenClient = getScreenClient();
-            if (screenClient) {
-                sendMessage(screenClient, { type: data.type, message: { ...data.message, userID } });
-            }
-            break;
         case 'GAME_EVENT':
             // Forward game-level events to all connected clients (so games can coordinate)
             for (const [clientWS] of connectedClients) {

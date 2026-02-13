@@ -43,39 +43,14 @@ export default {
     /*
         Incoming messages handler.
 
-        Forwarded VR controller `message` contains (when a controller ray intersects the screen):
-            - controllerType: 'right'|'left'
-            - canvasX, canvasY: pixel coordinates on the screen canvas (only present if `onScreen` is true)
-            - onScreen: boolean indicating whether the ray intersected the screen rect
-            - position, quaternion: controller pose (grip space)
-            - topLeftCorner, bottomRightCorner, rectXDistance, rectYDistance: screen rect geometry
-            - triggerButtonState, squeezeButtonState, button1State, button2State: button values
-            - thumbstickX, thumbstickY: axis values
-            - userID: originating user id (if present)
-
-        Additionally, the VR-side `updateVR` context receives `screenState` and `screenMeta` for per-frame intersection and metadata.
+        All controller data is available directly in updateVR via context.controllers, 
+        context.screenState, and context.screenMeta. Use sendGameMessage to communicate 
+        between VR and screen clients when custom events are needed.
 
         Handle messages sent via `sendGameMessage` here as you like.
     */
     onMessage(msg) {
         if (!msg) return;
-
-        // VR controller updates forwarded by the host
-        // Sends canvasX and canvasY if controller raycast intersects screen
-        if (msg.type === 'VR_CONTROLLER_STATE' && msg.message) {
-            const state = msg.message;
-            // state.canvasX / state.canvasY are pixel coords on the screen canvas
-            // Example: detect trigger press
-            const trigger = state.triggerButtonState || 0;
-            if (trigger > 0.5) {
-                if (state.canvasX && state.canvasY) {
-                    console.log('Shot at', state.canvasX, state.canvasY, 'from', state.userID);
-                } else {
-                    console.log('Shot from', state.userID);
-                }
-            }
-            return;
-        }
 
         // New client connected
         if (msg.type === 'NEW_CLIENT' && msg.message) {

@@ -34,17 +34,7 @@ document.body.appendChild(targetCanvas);
 const targetImage = new Image();
 targetImage.src = '/assets/target.png';
 
-// Clear button and drawing are handled by the active game (via startScreen)
-
-const controllerStates = new Map();
 let committedCalibration = null;
-
-function handleVRState(message) {
-    // Forward VR controller state to the active game for drawing/processing
-    try { gameAPI.onMessage({ type: 'VR_CONTROLLER_STATE', message }); } catch (e) { console.error('game onMessage error', e); }
-    if (!controllerStates.has(message.userID)) controllerStates.set(message.userID, {});
-    controllerStates.get(message.userID)[message.controllerType] = message;
-}
 
 function handleNewClient(message) {
     const { type, userID } = message;
@@ -62,15 +52,11 @@ function handleNewClient(message) {
 
 function handleClientDisconnect(message) {
     const { userID } = message;
-    if (controllerStates.has(userID)) {
-        controllerStates.delete(userID);
-        console.log('Client disconnected:', userID);
-    }
+    console.log('Client disconnected:', userID);
 }
 
 cm.handleEvent('NEW_CLIENT', handleNewClient);
 cm.handleEvent('CLIENT_DISCONNECTED', handleClientDisconnect);
-cm.handleEvent('VR_CONTROLLER_STATE', handleVRState);
 cm.handleEvent('CALIBRATION_COMMIT', (message) => {
     console.log('Screen received CALIBRATION_COMMIT (ignored overlay):', message);
     committedCalibration = message;

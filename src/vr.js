@@ -505,15 +505,6 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
     } catch (e) {
         console.warn('restart-via-button error', e);
     }
-
-    // Normal drawing: send controller states to screen
-    for (let i = 0; i < 2; i++) {
-        const controller = controllerConfigs[i];
-        if (!controller) continue;
-        const { gamepad, raySpace, gripSpace } = controller;
-        if (!gamepad || !gripSpace) continue;
-        if (calibrated) sendVRState(i, controller);
-    }
 }
 
 // ---------- Screen rect & labels ----------
@@ -638,53 +629,6 @@ function addScreenRect(scene) {
     }, 100);
 
     updateWidgetPositions();
-}
-
-// ---------- Networking and input to screen ----------
-async function sendVRState(i, controller) {
-    // Only send VR state after calibration
-    if (!calibrated) return;
-    const { gamepad, raySpace, gripSpace } = controller;
-    if (!raySpace || !gamepad || !gripSpace) return;
-
-    const controllerType = i === 0 ? 'right' : 'left';
-    // Base payload always includes pose and button/axis states
-    const baseMsg = {
-        controllerType,
-        position: {
-            x: gripSpace.position.x,
-            y: gripSpace.position.y,
-            z: gripSpace.position.z
-        },
-        quaternion: {
-            x: gripSpace.quaternion.x,
-            y: gripSpace.quaternion.y,
-            z: gripSpace.quaternion.z,
-            w: gripSpace.quaternion.w
-        },
-        topLeftCorner: [...topLeftCorner],
-        bottomRightCorner: [...bottomRightCorner],
-        rectXDistance,
-        rectYDistance,
-        triggerButtonState: gamepad.getButton(XR_BUTTONS.TRIGGER),
-        squeezeButtonState: gamepad.getButton(XR_BUTTONS.SQUEEZE),
-        button1State: XR_BUTTONS.BUTTON_1 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_1) : false,
-        button2State: XR_BUTTONS.BUTTON_2 !== undefined ? gamepad.getButton(XR_BUTTONS.BUTTON_2) : false,
-        thumbstickX: XR_AXES.THUMBSTICK_X !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_X) : 0,
-        thumbstickY: XR_AXES.THUMBSTICK_Y !== undefined ? gamepad.getAxis(XR_AXES.THUMBSTICK_Y) : 0
-    };
-
-    // Fill canvas coords and onScreen from the precomputed per-frame state
-    const hit = latestScreenState[controllerType];
-    if (hit && hit.onScreen && Number.isFinite(hit.canvasX) && Number.isFinite(hit.canvasY)) {
-        baseMsg.canvasX = hit.canvasX;
-        baseMsg.canvasY = hit.canvasY;
-        baseMsg.onScreen = true;
-    } else {
-        baseMsg.onScreen = false;
-    }
-
-    cm.sendMessage({ type: 'VR_CONTROLLER_STATE', message: baseMsg });
 }
 
 // ---------- Calibration messages ----------
