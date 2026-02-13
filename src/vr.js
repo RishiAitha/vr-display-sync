@@ -255,7 +255,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 const canvasX = uv.x * screenWidth;
                 const canvasY = (1 - uv.y) * screenHeight;
                 if (!isNaN(canvasX) && !isNaN(canvasY)) {
-                    latestScreenState[side] = { onScreen: true, canvasX: Math.round(canvasX), canvasY: Math.round(canvasY), uv };
+                    latestScreenState[side] = { onScreen: true, canvasX: Math.round(canvasX), canvasY: Math.round(canvasY), uv, hitPoint: intersects[0].point };
                 } else {
                     latestScreenState[side] = { onScreen: false };
                 }
