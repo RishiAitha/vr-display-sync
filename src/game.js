@@ -72,13 +72,10 @@ export default {
                             const dist = startPos.distanceTo(hitPoint) || 1.0;
                             // slower travel: scale speed by distance but keep reasonable minimum
                             const speed = Math.max(2, dist * 0.8);
-                            this._vr.shots.push({ mesh, start: startPos.clone(), target: hitPoint.clone(), progress: 0, speed });
+                            // try to include a shooter id if available
+                            const shooter = (ctrl && (ctrl.userID || ctrl.userId)) || (ctrl && ctrl.gamepad && ctrl.gamepad.id) || undefined;
+                            this._vr.shots.push({ mesh, start: startPos.clone(), target: hitPoint.clone(), progress: 0, speed, canvasX: hit.canvasX, canvasY: hit.canvasY, player: shooter });
                         }
-
-                        // Notify screen to spawn particles at canvas coords
-                        try {
-                            this._vr.sendGameMessage({ event: 'SHOT', canvasX: hit.canvasX, canvasY: hit.canvasY });
-                        } catch (e) {}
                     }
                 }
                 this._vr.prevTrigger[side] = trigger;
@@ -96,6 +93,14 @@ export default {
                 const scale = 1 + t * 0.8;
                 s.mesh.scale.setScalar(scale);
                 if (t >= 1) {
+                    // send arrival event to screen so particles/hits align with sphere landing
+                    try {
+                        if (this._vr && typeof this._vr.sendGameMessage === 'function' && s.canvasX !== undefined && s.canvasY !== undefined) {
+                            const payload = { event: 'SHOT', canvasX: s.canvasX, canvasY: s.canvasY };
+                            if (s.player) payload.player = s.player;
+                            this._vr.sendGameMessage(payload);
+                        }
+                    } catch (e) {}
                     if (s.mesh.parent) s.mesh.parent.remove(s.mesh);
                     if (s.mesh.geometry) s.mesh.geometry.dispose();
                     if (s.mesh.material) s.mesh.material.dispose();
@@ -551,47 +556,14 @@ export default {
                     this._screen.prevTrigger[side] = trigger;
                     return;
                 }
-                // If we're in the target game (demo3), handle scoring/hits here
-                if (this._screen.mode === 'demo3') {
-                    try {
-                        const uid = state.userID || 'unknown';
-                        this._screen.targetGame = this._screen.targetGame || { targets: [], shots: [], scores: {}, lastTrigger: {} };
-                        const tg = this._screen.targetGame;
-                        const prevTrig = tg.lastTrigger && tg.lastTrigger[uid];
-                        if (trigger > 0.5 && !prevTrig) {
-                            // register a shot visual
-                            tg.shots = tg.shots || [];
-                            tg.shots.push({ x: state.canvasX, y: state.canvasY, life: 0.6, maxLife: 0.6 });
-                            // check for hits
-                            const r = Math.floor(Math.min((this._screen.canvas && this._screen.canvas.clientWidth) || 800, (this._screen.canvas && this._screen.canvas.clientHeight) || 600) * 0.06) || 32;
-                            for (const t of (tg.targets || [])) {
-                                const dx = state.canvasX - t.x;
-                                const dy = state.canvasY - t.y;
-                                const dist2 = dx * dx + dy * dy;
-                                if (dist2 <= r * r) {
-                                    tg.scores = tg.scores || {};
-                                    tg.scores[uid] = (tg.scores[uid] || 0) + 1;
-                                    // respawn target
-                                    tg.respawnTarget && tg.respawnTarget(t, this._screen.canvas);
-                                    break;
-                                }
-                            }
-                        }
-                        tg.lastTrigger = tg.lastTrigger || {};
-                        tg.lastTrigger[uid] = trigger > 0.5;
-                    } catch (e) {}
+                // For draw demo, consume controller state for drawing only
+                if (this._screen.mode === 'demo2') {
+                    this._screen.prevTrigger[side] = trigger;
                     return;
                 }
                 // For other demos, previous behavior: spawn fireworks on trigger rising edge (demo1 & demo3 handled elsewhere)
                 const prev = this._screen.prevTrigger[side] || 0;
-                if (prev <= 0.5 && trigger > 0.5) {
-                    if (state.canvasX !== undefined && state.canvasY !== undefined) {
-                        if (this._screen && this._screen.spawnParticles) {
-                            // only spawn particles for demo1 and demo3
-                            if (this._screen.mode === 'demo1' || this._screen.mode === 'demo3') this._screen.spawnParticles(state.canvasX, state.canvasY);
-                        }
-                    }
-                }
+                // For other demos we don't spawn impact effects here; those are driven by the VR 'SHOT' arrival event
                 this._screen.prevTrigger[side] = trigger;
             } catch (e) {}
             return;
@@ -625,10 +597,32 @@ export default {
                     this._screen.mode = info.mode;
                     return;
                 }
-                if (info && info.event === 'SHOT' && this._screen && this._screen.spawnParticles) {
-                    // only spawn fireworks when in demo1
-                    if (this._screen.mode === 'demo1') {
+                if (info && info.event === 'SHOT' && this._screen) {
+                    // align effects with sphere arrival: spawn fireworks for demo1
+                    if (this._screen.mode === 'demo1' && this._screen.spawnParticles) {
                         this._screen.spawnParticles(info.canvasX, info.canvasY);
+                    }
+                    // handle target-game scoring + visuals for demo3
+                    if (this._screen.mode === 'demo3') {
+                        this._screen.targetGame = this._screen.targetGame || { targets: [], shots: [], scores: {}, lastTrigger: {} };
+                        const tg = this._screen.targetGame;
+                        tg.shots = tg.shots || [];
+                        tg.shots.push({ x: info.canvasX, y: info.canvasY, life: 0.6, maxLife: 0.6 });
+                        try {
+                            const uid = info.player || info.playerId || 'unknown';
+                            const r = Math.floor(Math.min((this._screen.canvas && this._screen.canvas.clientWidth) || 800, (this._screen.canvas && this._screen.canvas.clientHeight) || 600) * 0.06) || 32;
+                            for (const t of (tg.targets || [])) {
+                                const dx = info.canvasX - t.x;
+                                const dy = info.canvasY - t.y;
+                                const dist2 = dx * dx + dy * dy;
+                                if (dist2 <= r * r) {
+                                    tg.scores = tg.scores || {};
+                                    tg.scores[uid] = (tg.scores[uid] || 0) + 1;
+                                    tg.respawnTarget && tg.respawnTarget(t, this._screen.canvas);
+                                    break;
+                                }
+                            }
+                        } catch (e) {}
                     }
                 }
             } catch (e) {}
