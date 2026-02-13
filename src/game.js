@@ -17,7 +17,8 @@ export default {
     // Per-frame VR update. delta,time in seconds. context same as startVR.
     // context: { scene, camera, renderer, player, controllers, sendGameMessage,
     //            screenState, screenMeta, screenRect }
-    // - `screenState`: object with `right` and `left` entries, each `{ onScreen, canvasX, canvasY, uv }` (per-frame intersection)
+    // - `screenState`: object with `right` and `left` entries, each `{ onScreen, canvasX, canvasY, uv, hitPoint }` (per-frame intersection)
+    //      - if onScreen is false, nothing else is sent; canvasX and canvasY are canvas coords, hitPoint is WebXR coords, uv is 2D coords on rect.
     // - `screenMeta`: metadata snapshot `{ screenWidth, screenHeight, topLeftCorner, bottomRightCorner, rectXDistance, rectYDistance }`
     // - `screenRect`: the THREE.Mesh used to represent the screen rect (optional)
     updateVR(delta, time, context) {

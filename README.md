@@ -32,6 +32,7 @@
     - Delta and time in seconds (delta is time from last frame, time is total time passed)
 	- `context` contains the same fields as `startVR` with additional fields:
         - screenState: holds raycast intersection status and position for left and right controllers and screen
+            - if onScreen is true, sends canvasX, canvasY, hitPoint (WebXR coords), and uv of intersection
         - screenMeta: width, height, corner positions, screen rectangle scaling
         - screenRect: THREE.Mesh representing calibrated screen rectangle
 
