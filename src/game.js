@@ -1,6 +1,5 @@
-/*
-    Game template
-*/
+import * as THREE from 'three';
+import { XR_BUTTONS } from 'gamepad-wrapper';
 
 export default {
     // Instance variables here
