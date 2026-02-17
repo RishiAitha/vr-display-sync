@@ -278,11 +278,8 @@ export default {
             return;
         }
 
-        // Extract the actual message payload
-        const message = msg.type === 'GAME_EVENT' ? msg.message : msg;
-
-        if (message.event === 'SHOT') {
-            this.registerShot(message.canvasX, message.canvasY, message.player);
+        if (msg.event === 'SHOT') {
+            this.registerShot(msg.canvasX, msg.canvasY, msg.player);
         }
     },
 

@@ -348,12 +348,12 @@ if (t >= 1) {
 
 ```javascript
 onMessage(msg) {
-    if (!this._screen) return;
+    if (!this._screen) {
+        return;
+    }
 
-    const message = msg.type === 'GAME_EVENT' ? msg.message : msg;
-
-    if (message.event === 'SHOT') {
-        console.log('Shot received:', message.canvasX, message.canvasY, message.player);
+    if (msg.event === 'SHOT') {
+        this.registerShot(msg.canvasX, msg.canvasY, msg.player);
     }
 },
 ```
