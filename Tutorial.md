@@ -359,9 +359,8 @@ onMessage(msg) {
 ```
 
 **What's happening:**
-- Messages come wrapped in a `GAME_EVENT` type
-- We extract the actual message payload
 - We check for our custom 'SHOT' event
+- We send that shot's information to be registered
 
 **Test it:** Pull the trigger in VR and watch the console on the screen client. You should see shot messages logged!
 
