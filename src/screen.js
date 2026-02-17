@@ -61,7 +61,6 @@ cm.handleEvent('CALIBRATION_COMMIT', (message) => {
     console.log('Screen received CALIBRATION_COMMIT (ignored overlay):', message);
     committedCalibration = message;
 });
-cm.handleEvent('GAME_EVENT', (message) => { try { gameAPI.onMessage(message); } catch (e) { console.error('gameAPI onMessage error', e); } });
 
 // Optional per-frame screen update (no-op if game doesn't implement it)
 let __lastScreenTime = performance.now();

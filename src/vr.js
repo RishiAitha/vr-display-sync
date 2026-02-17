@@ -675,7 +675,6 @@ function updateStatus() {
 cm.handleEvent('CLOSE', updateStatus);
 cm.handleEvent('SCREEN_CALIBRATION', handleCalibration);
 cm.handleEvent('SCREEN_DISCONNECTED', resetCalibration);
-cm.handleEvent('GAME_EVENT', (message) => { try { gameAPI.onMessage(message); } catch (e) { console.error('gameAPI onMessage error', e); } });
 
 // Initialize XR scene
 init(setupScene, onFrame);
