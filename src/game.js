@@ -5,7 +5,6 @@ const SPHERE_RADIUS = 0.02;
 const SPHERE_COLOR = 0xffee66;
 const TARGET_RADIUS_PERCENT = 0.06;
 const SHOT_FADE_TIME = 0.6;
-const MAX_CANVAS_SIZE = 8192;
 
 export default {
 
@@ -113,7 +112,13 @@ export default {
         this._screen.canvas = context.canvas;
         this._screen.ctx = context.canvas.getContext('2d');
 
-        this.resizeCanvas();
+        // Minimal sizing: assume host (screen) sizes the canvas (fullscreen + reload).
+        // Read pixel size now and compute target radius — keep game code focused.
+        const canvas = this._screen.canvas;
+        this._screen.width = canvas.width || canvas.clientWidth;
+        this._screen.height = canvas.height || canvas.clientHeight;
+        this._screen.targetRadius = Math.floor(Math.min(this._screen.width, this._screen.height) * TARGET_RADIUS_PERCENT);
+        this._screen.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         this._screen.targets = [];
         this._screen.shotVisuals = [];
@@ -144,31 +149,6 @@ export default {
     },
 
 
-    // Handles canvas resizing with DPR scaling
-    resizeCanvas() {
-        const canvas = this._screen.canvas;
-        const dpr = window.devicePixelRatio || 1;
-
-        const width = canvas.clientWidth;
-        const height = canvas.clientHeight;
-
-        const maxDimension = Math.max(width, height);
-        const effectiveDpr = Math.min(dpr, Math.floor(MAX_CANVAS_SIZE / maxDimension));
-
-        canvas.width = Math.floor(width * effectiveDpr);
-        canvas.height = Math.floor(height * effectiveDpr);
-        canvas.style.width = width + 'px';
-        canvas.style.height = height + 'px';
-
-        this._screen.dpr = effectiveDpr;
-        this._screen.width = width;
-        this._screen.height = height;
-        this._screen.targetRadius = Math.floor(Math.min(width, height) * TARGET_RADIUS_PERCENT);
-
-        this._screen.ctx.setTransform(effectiveDpr, 0, 0, effectiveDpr, 0, 0);
-    },
-
-
     // Creates a new target at a random position
     createTarget() {
         const x = this._screen.targetRadius + Math.random() * (this._screen.width - 2 * this._screen.targetRadius);
@@ -192,15 +172,11 @@ export default {
             return;
         }
 
-        this.resizeCanvas();
-
         const ctx = this._screen.ctx;
-        const dpr = this._screen.dpr;
 
         // Clear and set white background
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, this._screen.canvas.width, this._screen.canvas.height);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, this._screen.width, this._screen.height);
 

@@ -1,20 +1,13 @@
 # Building Your First WebXR Game: Target Shooter Tutorial
 
-This tutorial will guide you through creating a complete VR target shooting game step by step. You'll learn how to handle VR controllers, draw on a screen canvas, communicate between VR and screen clients, and implement game logic.
+This tutorial uses a simple target shooting game to cover how to handle VR controllers, draw on a screen canvas, communicate between VR and screen clients, and implement game logic.
 
-## What You'll Build
+## Overview
 
-A VR target shooting game where:
 - VR players point at a screen and shoot spheres by pulling the trigger
 - The screen displays targets that move randomly
 - Players score points by hitting targets
 - A leaderboard tracks all players' scores
-
-## Prerequisites
-
-- Basic JavaScript knowledge
-- Understanding of THREE.js basics (Vector3, Mesh, etc.)
-- The vr-display-sync project set up and running
 
 ---
 
@@ -194,7 +187,6 @@ Now let's set up the screen client to display targets that players can shoot.
 
 ```javascript
 const TARGET_RADIUS_PERCENT = 0.06;
-const MAX_CANVAS_SIZE = 8192;
 
 async startScreen(context) {
     this._screen = {};
@@ -215,40 +207,36 @@ async startScreen(context) {
 - We'll store target positions in an array
 - We load a target image (the framework provides this asset)
 
-### 2.2 Handle Canvas Resizing with DPI
+### 2.2 Handle Canvas Resizing (simple)
 
-High DPI displays need special handling to avoid blurry graphics.
+For this tutorial we'll keep canvas resizing straightforward to reduce complexity. The canvas will use 1:1 pixel sizing (no DPR scaling) so the math and drawing are easier to follow.
 
 ```javascript
 resizeCanvas() {
     const canvas = this._screen.canvas;
-    const dpr = window.devicePixelRatio || 1;
 
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
 
-    const maxDimension = Math.max(width, height);
-    const effectiveDpr = Math.min(dpr, Math.floor(MAX_CANVAS_SIZE / maxDimension));
-
-    canvas.width = Math.floor(width * effectiveDpr);
-    canvas.height = Math.floor(height * effectiveDpr);
+    // Use simple 1:1 pixel sizing to keep the tutorial easy to follow
+    canvas.width = width;
+    canvas.height = height;
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
 
-    this._screen.dpr = effectiveDpr;
     this._screen.width = width;
     this._screen.height = height;
     this._screen.targetRadius = Math.floor(Math.min(width, height) * TARGET_RADIUS_PERCENT);
 
-    this._screen.ctx.setTransform(effectiveDpr, 0, 0, effectiveDpr, 0, 0);
+    // Ensure default transform
+    this._screen.ctx.setTransform(1, 0, 0, 1, 0, 0);
 },
 ```
 
 **What's happening:**
-- We scale the canvas by device pixel ratio for sharp rendering
-- We cap the size to prevent huge canvases that hurt performance
-- We calculate target size as a percentage of screen size
-- The transform is set once; we don't need to scale every draw call
+- The canvas is sized to match its CSS layout size (clientWidth/clientHeight)
+- We calculate target size as a percentage of the canvas size
+- No DPR math or transforms are required, which keeps examples minimal
 
 ### 2.3 Create and Draw Targets
 
@@ -308,12 +296,10 @@ updateScreen(delta, time, context) {
     this.resizeCanvas();
 
     const ctx = this._screen.ctx;
-    const dpr = this._screen.dpr;
 
     // Clear and set white background
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this._screen.canvas.width, this._screen.canvas.height);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, this._screen.width, this._screen.height);
 
