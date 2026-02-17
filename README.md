@@ -70,14 +70,8 @@
     - Example: `sendGameMessage({ event: 'SHOT', x: 100, y: 200, playerId: 'abc' })`
 
 - `onMessage(msg)` — incoming message handler.
-	- System messages (handled automatically by framework):
-		- `SCREEN_CALIBRATION`: screen reports sizes to VR for calibration -- probably not useful as games begin after calibration finishes
-		- `CALIBRATION_COMMIT`: VR sends commit to screen when user saves calibration.
-		- `NEW_CLIENT` / `CLIENT_DISCONNECTED`: notifications about other clients connecting/disconnecting
-            - msg.message contains: `{ type: 'VR' or 'SCREEN', userID: 'uuid-string' }`
-	- Game messages (created by you):
-		- `GAME_EVENT`: arbitrary game-level events emitted via `sendGameMessage` (you create these!)
-            - Example handling: `if (msg.type === 'GAME_EVENT' && msg.message.event === 'SHOT') { handleShot(msg.message.x, msg.message.y); }`
+	- Recieves messages sent via sendGameMessage.
+    - Use this for in-game events and client communication.
 
 ## File Reference
 - `src/vr.js`

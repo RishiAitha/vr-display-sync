@@ -39,42 +39,12 @@ export default {
         // Optional per-frame screen logic
     },
 
-    /*
-        Incoming messages handler.
-
-        All controller data is available directly in updateVR via context.controllers, 
-        context.screenState, and context.screenMeta. Use sendGameMessage to communicate 
-        between VR and screen clients when custom events are needed.
-
-        Handle messages sent via `sendGameMessage` here as you like.
-    */
+    // Incoming messages handler
     onMessage(msg) {
         if (!msg) return;
 
-        // New client connected
-        if (msg.type === 'NEW_CLIENT' && msg.message) {
-            const info = msg.message; // { type, userID }
-            console.log('Client joined:', info.type, info.userID);
-            return;
-        }
+        // Handle game messages here
 
-        // Client disconnected
-        if (msg.type === 'CLIENT_DISCONNECTED' && msg.message) {
-            const info = msg.message; // { type, userID }
-            console.log('Client left:', info.userID);
-            return;
-        }
-
-        // Generic game-level payloads sent via sendGameMessage(payload)
-        if (msg.type === 'GAME_EVENT' && msg.message) {
-            const info = msg.message;
-
-            // Handle your game messages here
-
-            return;
-        }
-
-        // Fallback: raw payloads
         console.log('game onMessage received', msg);
     }
 };
