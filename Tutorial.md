@@ -573,42 +573,4 @@ this._screen.canvas.addEventListener('click', (e) => {
 
 Congratulations! You've built a complete VR target shooting game. Your final [game.js](src/game.js) should now match the complete implementation.
 
-## Key Concepts Recap
-
-1. **VR Side:**
-   - Use `context.controllers` to access controller state
-   - Use `getButtonDown()` for one-time button press detection
-   - `context.screenState` provides ray intersection with the screen
-   - THREE.js objects need proper disposal to prevent memory leaks
-
-2. **Screen Side:**
-   - Canvas requires DPI scaling for sharp rendering
-   - 2D context is used for all drawing
-   - Call `resizeCanvas()` each frame to handle window resizing
-
-3. **Communication:**
-   - Use `sendGameMessage()` to send custom events
-   - Handle messages in `onMessage()`
-   - Messages arrive on both VR and screen clients
-
-4. **Game Design:**
-   - Keep state separate (`this._vr` and `this._screen`)
-   - Use arrays to track dynamic objects (spheres, targets, visuals)
-   - Dispose of objects when no longer needed
-   - Test with both VR and mouse input
-
-## Next Steps
-
-Try modifying the game to learn more:
-
-- **Different weapons:** Add a laser mode that instant-hits
-- **Power-ups:** Spawn special targets worth more points
-- **Multiplayer:** Show other players' shots in different colors
-- **Sound effects:** Add audio when targets are hit
-- **Particle effects:** Spawn particles when targets explode
-- **Difficulty modes:** Smaller targets or moving targets
-- **Timer:** Add a game duration with a final winner
-
 Refer to [README.md](README.md) for the complete API documentation.
-
-Happy coding! 🎯
