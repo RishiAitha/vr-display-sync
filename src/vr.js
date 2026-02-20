@@ -53,6 +53,7 @@ let camVar = null;
 // Widget system
 let loader = null;
 let widgetGroup = null;
+let confirmBall = null;
 let widgetTemplates = { transformArrow: null, rotateArrow: null, scaleCube: null };
 let curvedScreenTemplate = null;
 let cachedMeshDimensions = null; // Cache original mesh dimensions to avoid recalculating bbox
@@ -169,6 +170,15 @@ function spawnWidgets(scene) {
     applyColorToMesh(tlMesh, 0xff69b4);
     applyColorToMesh(brMesh, 0xffa500);
     widgetGroup.add(tlMesh, brMesh);
+
+    // Add purple confirmation ball at center
+    const ballGeometry = new THREE.SphereGeometry(0.12, 16, 16);
+    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0x9b59d6, emissive: 0x9b59d6, emissiveIntensity: 0.5 });
+    confirmBall = new THREE.Mesh(ballGeometry, ballMaterial);
+    confirmBall.scale.setScalar(baseScale * 0.9);
+    confirmBall.userData.type = 'confirm';
+    confirmBall.position.copy(center);
+    widgetGroup.add(confirmBall);
 
     widgetGroup.visible = true;
 }
@@ -302,10 +312,10 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
     const controllerConfigs = [controllers.right, controllers.left];
 
     if (!calibrated) {
-        statusDisplay.text = !aspectRatio ? 'Waiting for screen...' : 'Manual calibration: Use right controller. Squeeze to grab; press A to Save';
+        statusDisplay.text = !aspectRatio ? 'Waiting for screen...' : 'Manual calibration: Use right controller. Trigger to grab; aim at purple ball & trigger to Save';
         statusDisplay.sync();
     } else {
-        statusDisplay.text = 'Ready | Press A to Recalibrate';
+        statusDisplay.text = 'Ready | Aim at purple ball & trigger to Recalibrate';
         statusDisplay.sync();
     }
 
@@ -339,7 +349,42 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
             }
 
             // Start grab
-            if (gamepad.getButtonDown && gamepad.getButtonDown(XR_BUTTONS.SQUEEZE) && hoveredWidget && !grabbedWidget) {
+            if (gamepad.getButtonDown && gamepad.getButtonDown(XR_BUTTONS.TRIGGER) && hoveredWidget && !grabbedWidget) {
+                // Skip if we're clicking the confirm ball
+                if (hoveredWidget.userData && hoveredWidget.userData.type === 'confirm') {
+                    // Handle confirmation ball click - commit calibration
+                    cm.sendMessage({
+                        type: 'CALIBRATION_COMMIT',
+                        message: {
+                            topLeftCorner: [...topLeftCorner],
+                            bottomRightCorner: [...bottomRightCorner],
+                            rectXDistance,
+                            rectYDistance
+                        }
+                    });
+                    calibrated = true;
+                    // Start the active game once calibration is committed
+                    if (!gameStartedVR) {
+                        gameStartedVR = true;
+                        try { await gameAPI.startVR({ scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { console.error('game startVR error', e); }
+                    }
+                    fineTuneMode = false;
+                    rayHelper.visible = false;
+                    widgetsSpawned = false;
+                    // Keep only the confirm ball visible
+                    if (widgetGroup) {
+                        widgetGroup.children.forEach((child) => {
+                            if (child.userData && child.userData.type !== 'confirm') {
+                                child.visible = false;
+                            }
+                        });
+                    }
+                    if (!screenRect && aspectRatio) addScreenRect(scene);
+                    if (screenRect) screenRect.visible = true;
+                    if (frontLabel) { if (frontLabel.parent) frontLabel.parent.remove(frontLabel); frontLabel = null; }
+                    if (backLabel) { if (backLabel.parent) backLabel.parent.remove(backLabel); backLabel = null; }
+                    return;
+                }
                 grabbedWidget = hoveredWidget;
                 const qWorld = new THREE.Quaternion();
                 grabbedWidget.getWorldQuaternion(qWorld);
@@ -370,35 +415,8 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 if (hoveredWidget) { clearHighlight(hoveredWidget); hoveredWidget = null; }
             }
 
-            // Save calibration via A button
-            if (gamepad.getButtonDown && gamepad.getButtonDown(XR_BUTTONS.BUTTON_1)) {
-                cm.sendMessage({
-                    type: 'CALIBRATION_COMMIT',
-                    message: {
-                        topLeftCorner: [...topLeftCorner],
-                        bottomRightCorner: [...bottomRightCorner],
-                        rectXDistance,
-                        rectYDistance
-                    }
-                });
-                calibrated = true;
-                // Start the active game once calibration is committed
-                if (!gameStartedVR) {
-                    gameStartedVR = true;
-                    try { await gameAPI.startVR({ scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { console.error('game startVR error', e); }
-                }
-                fineTuneMode = false;
-                rayHelper.visible = false;
-                widgetsSpawned = false;
-                if (widgetGroup) widgetGroup.visible = false;
-                if (!screenRect && aspectRatio) addScreenRect(scene);
-                if (screenRect) screenRect.visible = true;
-                if (frontLabel) { if (frontLabel.parent) frontLabel.parent.remove(frontLabel); frontLabel = null; }
-                if (backLabel) { if (backLabel.parent) backLabel.parent.remove(backLabel); backLabel = null; }
-            }
-
             // Update while grabbing
-            if (grabbedWidget && gamepad.getButton && gamepad.getButton(XR_BUTTONS.SQUEEZE)) {
+            if (grabbedWidget && gamepad.getButton && gamepad.getButton(XR_BUTTONS.TRIGGER)) {
                 const type = grabbedWidget.userData.type;
                 if (type === 'translate') {
                     const axisWorld = grabState.axisWorld ? grabState.axisWorld.clone() : (grabbedWidget.userData.axis ? grabbedWidget.userData.axis.clone().normalize() : new THREE.Vector3(1,0,0));
@@ -472,7 +490,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
             }
 
             // Release grab
-            if (grabbedWidget && (!gamepad.getButton || !gamepad.getButton(XR_BUTTONS.SQUEEZE))) {
+            if (grabbedWidget && (!gamepad.getButton || !gamepad.getButton(XR_BUTTONS.TRIGGER))) {
                 if (grabbedWidget) restoreColorFromUserData(grabbedWidget);
                 grabbedWidget = null;
                 grabState = null;
@@ -511,25 +529,50 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
     // If not calibrated, nothing else to do
     if (!calibrated) return;
 
-    // Allow right controller A to restart calibration
+    // Allow right controller trigger on confirm ball to restart calibration
     try {
         const rightController = controllerConfigs[0];
-        if (calibrated && rightController && rightController.gamepad) {
-            const { gamepad } = rightController;
-            if (gamepad.getButtonDown && gamepad.getButtonDown(XR_BUTTONS.BUTTON_1)) {
-                calibrated = false;
-                fineTuneMode = true;
-                selectedCorner = 'topLeft';
-                cornerDistance = 2.0;
-                widgetsSpawned = false;
-                if (widgetGroup) widgetGroup.visible = true;
-                if (sceneVar) spawnWidgets(sceneVar);
-                rayHelper.visible = true;
-                if (screenRect && screenRect.parent) { screenRect.parent.remove(screenRect); screenRect = null; }
+        if (calibrated && rightController && rightController.gamepad && rightController.raySpace) {
+            const { gamepad, raySpace } = rightController;
+            
+            // Check if aiming at confirm ball
+            const rayDirection = new THREE.Vector3(0,0,-1).applyQuaternion(raySpace.quaternion).normalize();
+            const raycaster = new THREE.Raycaster();
+            raycaster.set(raySpace.position, rayDirection);
+            let ballIntersects = [];
+            if (confirmBall && confirmBall.visible) {
+                ballIntersects = raycaster.intersectObject(confirmBall, true);
+            }
+            
+            // Highlight ball when hovering
+            if (ballIntersects.length > 0) {
+                highlightWidget(confirmBall);
+                
+                // Trigger on ball restarts calibration
+                if (gamepad.getButtonDown && gamepad.getButtonDown(XR_BUTTONS.TRIGGER)) {
+                    calibrated = false;
+                    fineTuneMode = true;
+                    selectedCorner = 'topLeft';
+                    cornerDistance = 2.0;
+                    widgetsSpawned = false;
+                    if (widgetGroup) {
+                        widgetGroup.visible = true;
+                        // Make all widgets visible again
+                        widgetGroup.children.forEach((child) => {
+                            child.visible = true;
+                        });
+                    }
+                    if (sceneVar) spawnWidgets(sceneVar);
+                    rayHelper.visible = true;
+                    if (screenRect && screenRect.parent) { screenRect.parent.remove(screenRect); screenRect = null; }
+                }
+            } else {
+                // Clear highlight when not hovering
+                if (confirmBall) clearHighlight(confirmBall);
             }
         }
     } catch (e) {
-        console.warn('restart-via-button error', e);
+        console.warn('restart-via-ball error', e);
     }
 }
 
