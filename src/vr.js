@@ -54,6 +54,8 @@ let camVar = null;
 let loader = null;
 let widgetGroup = null;
 let widgetTemplates = { transformArrow: null, rotateArrow: null, scaleCube: null };
+let curvedScreenTemplate = null;
+let cachedMeshDimensions = null; // Cache original mesh dimensions to avoid recalculating bbox
 let widgetsSpawned = false;
 let grabbedWidget = null;
 let grabState = null;
@@ -99,6 +101,7 @@ function loadWidgetTemplates() {
     loader.load(basePath + 'transform_arrow.glb', (gltf) => { widgetTemplates.transformArrow = gltf.scene.clone(); }, undefined, () => {});
     loader.load(basePath + 'rotate_arrow.glb', (gltf) => { widgetTemplates.rotateArrow = gltf.scene.clone(); }, undefined, () => {});
     loader.load(basePath + 'scale_cube.glb', (gltf) => { widgetTemplates.scaleCube = gltf.scene.clone(); }, undefined, () => {});
+    loader.load(basePath + 'led_wall.glb', (gltf) => { curvedScreenTemplate = gltf.scene.clone(); }, undefined, (error) => { console.error('Failed to load led_wall.glb:', error); });
 }
 
 function highlightWidget(widget) {
@@ -171,16 +174,33 @@ function spawnWidgets(scene) {
 }
 
 function updateWidgetPositions() {
-    if (!widgetGroup) return;
-    const tl = new THREE.Vector3(topLeftCorner[0], topLeftCorner[1], topLeftCorner[2]);
-    const br = new THREE.Vector3(bottomRightCorner[0], bottomRightCorner[1], bottomRightCorner[2]);
-    const center = tl.clone().add(br).multiplyScalar(0.5);
+    if (!widgetGroup || !screenRect) return;
+    
+    // Get the actual bounding box of the positioned mesh in world space
+    screenRect.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(screenRect);
+    
+    // Actual corner positions from the mesh bounds
+    const tl = new THREE.Vector3(bbox.min.x, bbox.max.y, bbox.max.z); // top-left-front
+    const br = new THREE.Vector3(bbox.max.x, bbox.min.y, bbox.max.z); // bottom-right-front
+    const center = bbox.getCenter(new THREE.Vector3());
+    
     widgetGroup.children.forEach((child) => {
         if (child.userData && child.userData.type === 'scale') {
             const cornerName = child.userData.corner;
-            const target = cornerName === 'topLeft' ? tl.clone() : br.clone();
-            const inward = center.clone().sub(target).normalize().multiplyScalar(0.03);
-            const worldPos = target.clone().add(inward);
+            const cornerPos = cornerName === 'topLeft' ? tl.clone() : br.clone();
+            
+            // Manual x-axis offset to move widgets outward to actual corners
+            if (cornerName === 'topLeft') {
+                cornerPos.x -= 0.05; // Move left
+            } else {
+                cornerPos.x += 0.05; // Move right
+            }
+            
+            // Move slightly toward center for visibility
+            const inward = center.clone().sub(cornerPos).normalize().multiplyScalar(0.05);
+            const worldPos = cornerPos.clone().add(inward);
+            
             if (child.parent) {
                 const localPos = worldPos.clone();
                 child.parent.worldToLocal(localPos);
@@ -249,9 +269,15 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
             const rayDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion);
             const raycaster = new THREE.Raycaster();
             raycaster.set(raySpace.position, rayDirection);
-            const intersects = raycaster.intersectObject(screenRect);
+            // Intersect recursively through Group children (for loaded .glb)
+            const intersects = raycaster.intersectObject(screenRect, true);
             if (intersects.length > 0) {
                 const uv = intersects[0].uv;
+                if (!uv) {
+                    console.warn('No UV data on curved mesh intersection');
+                    latestScreenState[side] = { onScreen: false };
+                    return;
+                }
                 const canvasX = uv.x * screenWidth;
                 const canvasY = (1 - uv.y) * screenHeight;
                 if (!isNaN(canvasX) && !isNaN(canvasY)) {
@@ -517,27 +543,63 @@ function addScreenRect(scene) {
     rectYDistance = cornerDistance / aspectRatio;
 
     if (!screenRect) {
-        const unitGeometry = new THREE.PlaneGeometry(1, 1);
-        const screenRectMaterial = new THREE.MeshBasicMaterial({
-            color: 'white',
-            transparent: true,
-            opacity: 0.2,
-            side: THREE.DoubleSide
-        });
-        screenRect = new THREE.Mesh(unitGeometry, screenRectMaterial);
+        if (curvedScreenTemplate) {
+            screenRect = curvedScreenTemplate.clone();
+            // Apply transparent material to all meshes in the loaded model
+            screenRect.traverse((node) => {
+                if (node.isMesh) {
+                    node.material = new THREE.MeshBasicMaterial({
+                        color: 'white',
+                        transparent: true,
+                        opacity: 0.2,
+                        side: THREE.DoubleSide
+                    });
+                    node.material.needsUpdate = true;
+                }
+            });
+        } else {
+            // Fallback to plane if mesh not loaded yet
+            console.warn('Curved screen template not loaded, using fallback plane');
+            const unitGeometry = new THREE.PlaneGeometry(1, 1);
+            const screenRectMaterial = new THREE.MeshBasicMaterial({
+                color: 'white',
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide
+            });
+            screenRect = new THREE.Mesh(unitGeometry, screenRectMaterial);
+        }
         screenRect.name = 'screenRect';
         screenRect.frustumCulled = false;
         scene.add(screenRect);
+        
+        // Calculate and cache bounding box dimensions once when mesh is first created
+        screenRect.updateMatrixWorld(true); // Ensure matrix is updated before bbox calculation
+        const bbox = new THREE.Box3().setFromObject(screenRect);
+        cachedMeshDimensions = {
+            width: bbox.max.x - bbox.min.x,
+            height: bbox.max.y - bbox.min.y,
+            depth: bbox.max.z - bbox.min.z
+        };
     }
 
-    screenRect.scale.set(rectXDistance, rectYDistance, 1);
+    // Use cached dimensions if available, otherwise fall back to calculating (for plane fallback)
+    const meshWidth = cachedMeshDimensions ? cachedMeshDimensions.width : 1;
+    const meshHeight = cachedMeshDimensions ? cachedMeshDimensions.height : 1;
+
+    // Calculate scale to match calibrated dimensions
+    const scaleX = rectXDistance / meshWidth;
+    const scaleY = rectYDistance / meshHeight;
+    const scaleZ = scaleX; // Maintain curve depth proportional to width
+
+    screenRect.scale.set(scaleX, scaleY, scaleZ);
     const centerPos = new THREE.Vector3(
         topLeftCorner[0] + (rectXDistance / 2) * Math.cos(angle),
         topLeftCorner[1] - (rectYDistance / 2),
         topLeftCorner[2] + (rectXDistance / 2) * Math.sin(angle)
     );
     screenRect.position.copy(centerPos);
-    screenRect.rotation.set(0, -angle, 0);
+    screenRect.rotation.set(0, -angle + Math.PI, 0); // Add PI to flip mesh 180 degrees
 
     // Labels
     if (!frontLabel) {
@@ -638,6 +700,11 @@ function handleCalibration(message) {
     screenHeight = message.screenHeight;
     aspectRatio = screenWidth / screenHeight;
     if (sceneVar && !screenRect) {
+        if (!curvedScreenTemplate) {
+            console.warn('Curved screen template not loaded yet, retrying in 500ms...');
+            setTimeout(() => handleCalibration(message), 500);
+            return;
+        }
         const center = new THREE.Vector3(0, -0.3, -0.6);
         rectXDistance = 1.0;
         rectYDistance = rectXDistance / aspectRatio;
@@ -655,6 +722,7 @@ function resetCalibration() {
     if (screenRect) { sceneVar.remove(screenRect); screenRect = null; }
     if (frontLabel) { if (frontLabel.parent) frontLabel.parent.remove(frontLabel); frontLabel = null; }
     if (backLabel) { if (backLabel.parent) backLabel.parent.remove(backLabel); backLabel = null; }
+    cachedMeshDimensions = null; // Reset cached dimensions
     topLeftCorner = [-0.5, 1.6, -2.0];
     bottomRightCorner = [1.0, 0.8, -2.0];
     rectXDistance = null;
