@@ -186,29 +186,18 @@ function spawnWidgets(scene) {
 function updateWidgetPositions() {
     if (!widgetGroup || !screenRect) return;
     
-    // Get the actual bounding box of the positioned mesh in world space
-    screenRect.updateMatrixWorld(true);
-    const bbox = new THREE.Box3().setFromObject(screenRect);
-    
-    // Actual corner positions from the mesh bounds
-    const tl = new THREE.Vector3(bbox.min.x, bbox.max.y, bbox.max.z); // top-left-front
-    const br = new THREE.Vector3(bbox.max.x, bbox.min.y, bbox.max.z); // bottom-right-front
-    const center = bbox.getCenter(new THREE.Vector3());
+    // Use the actual corner coordinates (not bbox which changes with rotation)
+    const tl = new THREE.Vector3(topLeftCorner[0], topLeftCorner[1], topLeftCorner[2]);
+    const br = new THREE.Vector3(bottomRightCorner[0], bottomRightCorner[1], bottomRightCorner[2]);
+    const center = tl.clone().add(br).multiplyScalar(0.5);
     
     widgetGroup.children.forEach((child) => {
         if (child.userData && child.userData.type === 'scale') {
             const cornerName = child.userData.corner;
-            const cornerPos = cornerName === 'topLeft' ? tl.clone() : br.clone();
-            
-            // Manual x-axis offset to move widgets outward to actual corners
-            if (cornerName === 'topLeft') {
-                cornerPos.x -= 0.05; // Move left
-            } else {
-                cornerPos.x += 0.05; // Move right
-            }
+            let cornerPos = cornerName === 'topLeft' ? tl.clone() : br.clone();
             
             // Move slightly toward center for visibility
-            const inward = center.clone().sub(cornerPos).normalize().multiplyScalar(0.05);
+            const inward = center.clone().sub(cornerPos).normalize().multiplyScalar(0.08);
             const worldPos = cornerPos.clone().add(inward);
             
             if (child.parent) {
@@ -485,7 +474,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 const dx = bottomRightCorner[0] - topLeftCorner[0];
                 const dz = bottomRightCorner[2] - topLeftCorner[2];
                 rectXDistance = Math.sqrt(dx * dx + dz * dz);
-                rectYDistance = rectXDistance / aspectRatio;
+                rectYDistance = topLeftCorner[1] - bottomRightCorner[1]; // Use actual Y distance
                 addScreenRect(scene);
             }
 
@@ -519,7 +508,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 const directionX = bottomRightCorner[0] - topLeftCorner[0];
                 const directionZ = bottomRightCorner[2] - topLeftCorner[2];
                 rectXDistance = Math.sqrt(directionX * directionX + directionZ * directionZ);
-                rectYDistance = rectXDistance / aspectRatio;
+                rectYDistance = topLeftCorner[1] - bottomRightCorner[1]; // Use actual Y distance
             }
             addScreenRect(scene);
         }
@@ -583,7 +572,7 @@ function addScreenRect(scene) {
     const angle = Math.atan2(directionZ, directionX);
     const cornerDistance = Math.sqrt(directionX * directionX + directionZ * directionZ);
     rectXDistance = cornerDistance;
-    rectYDistance = cornerDistance / aspectRatio;
+    rectYDistance = topLeftCorner[1] - bottomRightCorner[1]; // Use actual Y distance, not aspect-locked
 
     if (!screenRect) {
         if (curvedScreenTemplate) {
@@ -670,8 +659,8 @@ function addScreenRect(scene) {
 
     const localY = rectYDistance / 2 - 0.03;
     const insetZ = 0.01;
-    frontLabel.text = 'Front';
-    backLabel.text = 'Back';
+    frontLabel.text = 'Back';  // Swapped due to 180° mesh rotation
+    backLabel.text = 'Front';  // Swapped due to 180° mesh rotation
 
     if (screenRect) screenRect.updateMatrixWorld(true);
 
@@ -750,7 +739,7 @@ function handleCalibration(message) {
         }
         const center = new THREE.Vector3(0, -0.3, -0.6);
         rectXDistance = 1.0;
-        rectYDistance = rectXDistance / aspectRatio;
+        rectYDistance = 0.5; // Fixed height, not locked to canvas aspect ratio
         topLeftCorner = [center.x - rectXDistance / 2, center.y + rectYDistance / 2, center.z];
         bottomRightCorner = [center.x + rectXDistance / 2, center.y - rectYDistance / 2, center.z];
         addScreenRect(sceneVar);
