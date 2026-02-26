@@ -25,12 +25,14 @@ export default {
             new THREE.BufferGeometry().setFromPoints(points),
             horizontalMaterial
         );
+        this.horizontalLine.frustumCulled = false;
         context.scene.add(this.horizontalLine);
         
         this.verticalLine = new THREE.Line(
             new THREE.BufferGeometry().setFromPoints(points),
             verticalMaterial
         );
+        this.verticalLine.frustumCulled = false;
         context.scene.add(this.verticalLine);
     },
 
@@ -136,8 +138,15 @@ export default {
                 const dir = worldPoint.clone().sub(headsetPos).normalize();
 
                 // Create perpendicular vectors to form a cross-hair
+                // Choose a reference vector that isn't parallel to dir
                 const worldUp = new THREE.Vector3(0, 1, 0);
-                const right = new THREE.Vector3().crossVectors(worldUp, dir).normalize();
+                const worldForward = new THREE.Vector3(0, 0, 1);
+                
+                // If dir is too close to parallel with worldUp, use worldForward instead
+                const upDot = Math.abs(dir.dot(worldUp));
+                const referenceVec = upDot > 0.9 ? worldForward : worldUp;
+                
+                const right = new THREE.Vector3().crossVectors(referenceVec, dir).normalize();
                 const up = new THREE.Vector3().crossVectors(dir, right).normalize();
 
                 // Length of cross-hair lines
