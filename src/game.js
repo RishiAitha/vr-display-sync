@@ -11,6 +11,8 @@ export default {
     // context: { scene, camera, renderer, player, controllers, sendGameMessage }
     async startVR(context) {
         this.latestPoint = {};
+        this.prevControllerPositions = { right: null, left: null };
+        
         const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
         this.marker = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), sphereMaterial);
         context.scene.add(this.marker);
@@ -34,6 +36,18 @@ export default {
         );
         this.verticalLine.frustumCulled = false;
         context.scene.add(this.verticalLine);
+
+        // Line to show controller crossing direction
+        const crossingMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
+        this.crossingLine = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(points),
+            crossingMaterial
+        );
+        this.crossingLine.frustumCulled = false;
+        this.crossingLine.visible = false;
+        context.scene.add(this.crossingLine);
+        
+        this.crossingFadeTime = 0;
     },
 
     // Per-frame VR update. delta,time in seconds. context same as startVR.
@@ -167,8 +181,93 @@ export default {
                     this.verticalLine.geometry.setFromPoints([vStart, vEnd]);
                     this.verticalLine.visible = true;
                 }
+
+                // Check for controller crossing the point-to-headset vector
+                ['right', 'left'].forEach((side) => {
+                    const controller = context.controllers && context.controllers[side];
+                    if (controller && controller.raySpace) {
+                        const currentPos = new THREE.Vector3();
+                        controller.raySpace.getWorldPosition(currentPos);
+                        
+                        if (this.prevControllerPositions[side]) {
+                            const prevPos = this.prevControllerPositions[side];
+                            
+                            // Find closest points between the two line segments
+                            // Line 1: headsetPos to worldPoint
+                            // Line 2: prevPos to currentPos
+                            const closestPoint = this.closestPointBetweenLines(
+                                headsetPos, worldPoint,
+                                prevPos, currentPos
+                            );
+                            
+                            // If the closest distance is small enough, we've crossed
+                            if (closestPoint && closestPoint.distance < 0.05) {
+                                // Calculate the perpendicular movement direction
+                                const movement = currentPos.clone().sub(prevPos);
+                                
+                                // Project movement onto the plane perpendicular to dir
+                                const parallelComponent = dir.clone().multiplyScalar(movement.dot(dir));
+                                const perpMovement = movement.clone().sub(parallelComponent);
+                                
+                                if (perpMovement.length() > 0.001) {
+                                    perpMovement.normalize();
+                                    
+                                    // Draw the crossing line at the intersection point
+                                    const crossLength = 0.3;
+                                    const crossStart = closestPoint.point.clone().add(perpMovement.clone().multiplyScalar(-crossLength / 2));
+                                    const crossEnd = closestPoint.point.clone().add(perpMovement.clone().multiplyScalar(crossLength / 2));
+                                    
+                                    if (this.crossingLine && this.crossingLine.geometry) {
+                                        this.crossingLine.geometry.setFromPoints([crossStart, crossEnd]);
+                                        this.crossingLine.visible = true;
+                                        this.crossingFadeTime = 2.0; // Show for 2 seconds
+                                    }
+                                }
+                            }
+                        }
+                        
+                        this.prevControllerPositions[side] = currentPos.clone();
+                    }
+                });
+                
+                // Fade out crossing line over time
+                if (this.crossingFadeTime > 0) {
+                    this.crossingFadeTime -= delta;
+                    if (this.crossingFadeTime <= 0) {
+                        this.crossingLine.visible = false;
+                    }
+                }
             }
         }
+    },
+
+    // Helper function to find closest points between two line segments
+    closestPointBetweenLines(a1, a2, b1, b2) {
+        const da = a2.clone().sub(a1);
+        const db = b2.clone().sub(b1);
+        const dc = b1.clone().sub(a1);
+        
+        const crossDaDb = new THREE.Vector3().crossVectors(da, db);
+        const denom = crossDaDb.lengthSq();
+        
+        // Lines are parallel
+        if (denom < 0.0001) return null;
+        
+        // Calculate closest parameters
+        const t = new THREE.Vector3().crossVectors(dc, db).dot(crossDaDb) / denom;
+        const u = new THREE.Vector3().crossVectors(dc, da).dot(crossDaDb) / denom;
+        
+        // Clamp to line segments
+        const tClamped = Math.max(0, Math.min(1, t));
+        const uClamped = Math.max(0, Math.min(1, u));
+        
+        const pointOnA = a1.clone().add(da.clone().multiplyScalar(tClamped));
+        const pointOnB = b1.clone().add(db.clone().multiplyScalar(uClamped));
+        
+        const distance = pointOnA.distanceTo(pointOnB);
+        const midPoint = new THREE.Vector3().addVectors(pointOnA, pointOnB).multiplyScalar(0.5);
+        
+        return { distance, point: midPoint, t: tClamped, u: uClamped };
     },
 
     // Screen handling
