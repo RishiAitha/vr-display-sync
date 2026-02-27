@@ -243,6 +243,18 @@ export default {
                                         
                                         this.crossingCone.visible = true;
                                     }
+
+                                    // Convert perpMovement to screen 2D force
+                                    // Use the right and up vectors we calculated earlier
+                                    const forceX = perpMovement.dot(right);
+                                    const forceY = -perpMovement.dot(up); // Negative because screen Y is down
+                                    
+                                    // Send force to screen
+                                    context.sendGameMessage({
+                                        event: 'APPLY_FORCE',
+                                        forceX: forceX,
+                                        forceY: forceY
+                                    });
                                 }
                             }
                         }
@@ -301,32 +313,72 @@ export default {
         const canvas = context.canvas;
         const ctx = canvas.getContext('2d');
 
-        function pickAndSendPoint() {
-            const x = Math.floor(Math.random() * canvas.width);
-            const y = Math.floor(Math.random() * canvas.height);
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = 'red';
-            ctx.beginPath();
-            ctx.arc(x, y, 10, 0, Math.PI * 2);
-            ctx.fill();
-
-            context.sendGameMessage({
-                event: 'RANDOM_POINT',
-                canvasX: x,
-                canvasY: y,
-                screenWidth: canvas.width,
-                screenHeight: canvas.height
-            });
-        }
-
-        setInterval(pickAndSendPoint, 3000);
+        // Initialize ball with physics
+        this.ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 4,
+            vx: 0,
+            vy: 0,
+            radius: 15,
+            gravity: 980, // pixels per second squared
+            damping: 0.8, // bounce damping
+            friction: 0.98 // velocity damping
+        };
     },
 
     // Optional per-frame Screen update. delta,time in seconds.
     // context: { canvas, sendGameMessage }
     updateScreen(delta, time, context) {
-        // Optional per-frame screen logic
+        if (!this.ball) return;
+        
+        const canvas = context.canvas;
+        const ctx = canvas.getContext('2d');
+        const ball = this.ball;
+
+        // Apply gravity
+        ball.vy += ball.gravity * delta;
+
+        // Update position
+        ball.x += ball.vx * delta;
+        ball.y += ball.vy * delta;
+
+        // Apply friction
+        ball.vx *= ball.friction;
+        ball.vy *= ball.friction;
+
+        // Bounce off walls
+        if (ball.x - ball.radius < 0) {
+            ball.x = ball.radius;
+            ball.vx = Math.abs(ball.vx) * ball.damping;
+        }
+        if (ball.x + ball.radius > canvas.width) {
+            ball.x = canvas.width - ball.radius;
+            ball.vx = -Math.abs(ball.vx) * ball.damping;
+        }
+        if (ball.y - ball.radius < 0) {
+            ball.y = ball.radius;
+            ball.vy = Math.abs(ball.vy) * ball.damping;
+        }
+        if (ball.y + ball.radius > canvas.height) {
+            ball.y = canvas.height - ball.radius;
+            ball.vy = -Math.abs(ball.vy) * ball.damping;
+        }
+
+        // Clear and draw
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'red';
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Send ball position to VR
+        context.sendGameMessage({
+            event: 'BALL_POSITION',
+            canvasX: ball.x,
+            canvasY: ball.y,
+            screenWidth: canvas.width,
+            screenHeight: canvas.height
+        });
     },
 
     /*
@@ -341,8 +393,16 @@ export default {
     onMessage(msg) {
         if (!msg) return;
 
-        if (msg.event === 'RANDOM_POINT') {
+        if (msg.event === 'BALL_POSITION') {
             this.latestPoint = msg;
+        }
+
+        if (msg.event === 'APPLY_FORCE' && this.ball) {
+            // Apply force to the ball
+            const forceMultiplier = 500; // Adjust strength
+            this.ball.vx += msg.forceX * forceMultiplier;
+            this.ball.vy += msg.forceY * forceMultiplier;
+            console.log('Applied force:', msg.forceX, msg.forceY);
         }
 
         console.log('game onMessage received', msg);
