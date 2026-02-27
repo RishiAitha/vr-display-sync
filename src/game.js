@@ -47,6 +47,14 @@ export default {
         this.crossingLine.visible = false;
         context.scene.add(this.crossingLine);
         
+        // Cone to show direction of crossing
+        const coneGeometry = new THREE.ConeGeometry(0.02, 0.06, 8);
+        const coneMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        this.crossingCone = new THREE.Mesh(coneGeometry, coneMaterial);
+        this.crossingCone.frustumCulled = false;
+        this.crossingCone.visible = false;
+        context.scene.add(this.crossingCone);
+        
         this.crossingFadeTime = 0;
     },
 
@@ -222,6 +230,19 @@ export default {
                                         this.crossingLine.visible = true;
                                         this.crossingFadeTime = 2.0; // Show for 2 seconds
                                     }
+                                    
+                                    // Position and orient the cone to point in the direction of movement
+                                    if (this.crossingCone) {
+                                        this.crossingCone.position.copy(crossEnd);
+                                        
+                                        // Rotate cone to point in perpMovement direction
+                                        // Default cone points up (0, 1, 0), rotate it to point along perpMovement
+                                        const defaultDir = new THREE.Vector3(0, 1, 0);
+                                        const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultDir, perpMovement);
+                                        this.crossingCone.quaternion.copy(quaternion);
+                                        
+                                        this.crossingCone.visible = true;
+                                    }
                                 }
                             }
                         }
@@ -230,11 +251,12 @@ export default {
                     }
                 });
                 
-                // Fade out crossing line over time
+                // Fade out crossing line and cone over time
                 if (this.crossingFadeTime > 0) {
                     this.crossingFadeTime -= delta;
                     if (this.crossingFadeTime <= 0) {
                         this.crossingLine.visible = false;
+                        this.crossingCone.visible = false;
                     }
                 }
             }
