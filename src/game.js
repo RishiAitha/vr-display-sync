@@ -246,8 +246,8 @@ export default {
 
                                     // Convert perpMovement to screen 2D force
                                     // Use the right and up vectors we calculated earlier
-                                    const forceX = perpMovement.dot(right);
-                                    const forceY = -perpMovement.dot(up); // Negative because screen Y is down
+                                    const forceX = -perpMovement.dot(up); // Negative because screen Y is down
+                                    const forceY = perpMovement.dot(right);
                                     
                                     // Send force to screen
                                     context.sendGameMessage({
