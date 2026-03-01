@@ -1,12 +1,25 @@
 const express = require('express');
 const path = require('path');
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const server = http.createServer(app);
+const sslKeyPath = process.env.SSL_KEY;
+const sslCertPath = process.env.SSL_CERT;
+
+const server = (sslKeyPath && sslCertPath)
+    ? https.createServer(
+        {
+            key: fs.readFileSync(sslKeyPath),
+            cert: fs.readFileSync(sslCertPath),
+        },
+        app
+    )
+    : http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const connectedClients = new Map();
