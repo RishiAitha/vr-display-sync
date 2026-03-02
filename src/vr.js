@@ -6,13 +6,99 @@ import { Text } from 'troika-three-text';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as gameAPI from './gameAPI.js';
 import game from './game.js';
-gameAPI.registerGame(game);
+import paintGame from './paintGame.js';
+import drawGame from './drawGame.js';
+gameAPI.registerGames({ balls: game, paint: paintGame, draw: drawGame });
+
+let configScreenMode = 'curved';
+let configDisplayOverlayEnabled = true;
+let configHandJointsDebugEnabled = false;
+
+let configActiveGameId = 'balls';
+let configDrawColorHex = '#111111';
+let configDrawThicknessPx = 20;
+let configDrawAlpha = 0.22;
+let lastGameVRContext = null;
+
+function getActiveScreenMode() {
+    return configScreenMode;
+}
+
+function setScreenRectOpacity(opacity) {
+    if (!screenRect) return;
+    screenRect.traverse((node) => {
+        if (!node.isMesh || !node.material) return;
+        const mats = Array.isArray(node.material) ? node.material : [node.material];
+        mats.forEach((m) => {
+            if (!m) return;
+            m.transparent = true;
+            m.opacity = opacity;
+            m.needsUpdate = true;
+        });
+    });
+}
 
 // Redirect to desktop if XR not supported
 if (navigator.xr) {
     navigator.xr.isSessionSupported('immersive-ar').then(supported => {
         if (!supported) window.location.href = '/desktop';
     });
+
+cm.handleEvent('CONFIG_UPDATE', (message) => {
+    if (message && typeof message.activeGameId === 'string') {
+        const nextId = message.activeGameId;
+        if (nextId && nextId !== configActiveGameId) {
+            configActiveGameId = nextId;
+            gameAPI.setActiveGame(nextId, { vrContext: lastGameVRContext });
+            if (gameStartedVR && lastGameVRContext) {
+                try { void gameAPI.startVR(lastGameVRContext); } catch (e) { console.error('game startVR error', e); }
+            }
+        }
+    }
+    if (message && typeof message.screenGeometryMode === 'string') {
+        const next = String(message.screenGeometryMode).toLowerCase();
+        if (next === 'flat' || next === 'curved') {
+            const prev = configScreenMode;
+            configScreenMode = next;
+            if (prev !== next) {
+                // Rebuild screenRect on mode change.
+                if (screenRect && screenRect.parent) screenRect.parent.remove(screenRect);
+                screenRect = null;
+                cachedMeshDimensions = null;
+                widgetsSpawned = false;
+                if (sceneVar && calibrated) addScreenRect(sceneVar);
+            }
+        }
+    }
+
+    if (message && typeof message.displayOverlayEnabled === 'boolean') {
+        configDisplayOverlayEnabled = message.displayOverlayEnabled;
+    }
+
+    if (message && typeof message.handJointsDebugEnabled === 'boolean') {
+        configHandJointsDebugEnabled = message.handJointsDebugEnabled;
+    }
+
+    if (message && typeof message.handTouchRadiusMeters === 'number' && Number.isFinite(message.handTouchRadiusMeters)) {
+        game.touchRadiusMeters = message.handTouchRadiusMeters;
+    }
+    if (message && typeof message.handMinSwipeSpeedMetersPerSec === 'number' && Number.isFinite(message.handMinSwipeSpeedMetersPerSec)) {
+        game.minSwipeSpeedMetersPerSec = message.handMinSwipeSpeedMetersPerSec;
+    }
+    if (message && typeof message.handSwipeBallCooldownSec === 'number' && Number.isFinite(message.handSwipeBallCooldownSec)) {
+        game.handSwipeBallCooldownSec = message.handSwipeBallCooldownSec;
+    }
+
+    if (message && typeof message.drawColorHex === 'string') {
+        configDrawColorHex = message.drawColorHex;
+    }
+    if (message && typeof message.drawThicknessPx === 'number' && Number.isFinite(message.drawThicknessPx)) {
+        configDrawThicknessPx = message.drawThicknessPx;
+    }
+    if (message && typeof message.drawAlpha === 'number' && Number.isFinite(message.drawAlpha)) {
+        configDrawAlpha = message.drawAlpha;
+    }
+});
 } else {
     window.location.href = '/desktop';
 }
@@ -21,9 +107,14 @@ if (navigator.xr) {
 let floor;
 let screenRect;
 let rayHelper;
+
+let handDebugGroup = null;
+let handDebugMeshes = new Map();
 let statusDisplay;
 let frontLabel = null;
 let backLabel = null;
+
+let lastScreenRectOverlayEnabled = null;
 
 const EYE_HEIGHT = 1.6;
 
@@ -53,14 +144,18 @@ let camVar = null;
 // Widget system
 let loader = null;
 let widgetGroup = null;
-let confirmBall = null;
-let widgetTemplates = { transformArrow: null, rotateArrow: null, scaleCube: null };
+let readyButton = null;
+let widgetTemplates = { scaleCube: null };
 let curvedScreenTemplate = null;
 let cachedMeshDimensions = null; // Cache original mesh dimensions to avoid recalculating bbox
 let widgetsSpawned = false;
 let grabbedWidget = null;
 let grabState = null;
 let hoveredWidget = null;
+let hoveredWidgetHit = null;
+let moveHandle = null;
+let rotateHandleLeft = null;
+let rotateHandleRight = null;
 
 // ---------- Utilities ----------
 function applyColorToMesh(object, hexColor) {
@@ -99,8 +194,6 @@ function rotatePointAroundY(point, center, angle) {
 function loadWidgetTemplates() {
     if (!loader) loader = new GLTFLoader();
     const basePath = '/assets/';
-    loader.load(basePath + 'transform_arrow.glb', (gltf) => { widgetTemplates.transformArrow = gltf.scene.clone(); }, undefined, () => {});
-    loader.load(basePath + 'rotate_arrow.glb', (gltf) => { widgetTemplates.rotateArrow = gltf.scene.clone(); }, undefined, () => {});
     loader.load(basePath + 'scale_cube.glb', (gltf) => { widgetTemplates.scaleCube = gltf.scene.clone(); }, undefined, () => {});
     loader.load(basePath + 'led_wall.glb', (gltf) => { curvedScreenTemplate = gltf.scene.clone(); }, undefined, (error) => { console.error('Failed to load led_wall.glb:', error); });
 }
@@ -132,59 +225,76 @@ function spawnWidgets(scene) {
 
     const baseScale = 0.18 * 0.7;
 
-    const arrowAxes = [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)];
-    const translateColors = [0xff0000, 0x00ff00, 0x0000ff];
-    for (let i=0;i<3;i++) {
-        let tpl = widgetTemplates.transformArrow ? widgetTemplates.transformArrow.clone() : null;
-        let mesh = tpl || new THREE.Mesh(new THREE.ConeGeometry(0.04,0.15,8), new THREE.MeshBasicMaterial({color:translateColors[i]}));
-        mesh.scale.setScalar(baseScale);
-        mesh.userData.type = 'translate';
-        mesh.userData.axis = arrowAxes[i].clone();
-        mesh.position.copy(center);
-        if (i === 0) mesh.rotation.z = -Math.PI / 2;
-        if (i === 2) mesh.rotation.x = Math.PI / 2;
-        applyColorToMesh(mesh, translateColors[i]);
-        widgetGroup.add(mesh);
-    }
-
-    let rotTpl = widgetTemplates.rotateArrow ? widgetTemplates.rotateArrow.clone() : null;
-    let rotMesh = rotTpl || new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.02, 8, 32), new THREE.MeshBasicMaterial({color:0x00aaff}));
-    rotMesh.scale.setScalar(baseScale * 0.9);
-    rotMesh.userData.type = 'rotate';
-    rotMesh.position.copy(center);
-    applyColorToMesh(rotMesh, 0xffff00);
-    widgetGroup.add(rotMesh);
+    const widgetUnitCube = new THREE.BoxGeometry(1, 1, 1);
 
     const tlPos = new THREE.Vector3(-0.3, 0, -0.3);
     const brPos = new THREE.Vector3(0.3, -0.6, -0.3);
-    const tlTpl = widgetTemplates.scaleCube ? widgetTemplates.scaleCube.clone() : null;
-    const brTpl = widgetTemplates.scaleCube ? widgetTemplates.scaleCube.clone() : null;
-    const tlMesh = tlTpl || new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.05), new THREE.MeshBasicMaterial({color:0xff69b4}));
-    const brMesh = brTpl || new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.05), new THREE.MeshBasicMaterial({color:0xffa500}));
-    tlMesh.scale.setScalar(baseScale * 0.9);
-    brMesh.scale.setScalar(baseScale * 0.9);
+    const tlMesh = new THREE.Mesh(widgetUnitCube, new THREE.MeshBasicMaterial({color:0xff8800}));
+    const brMesh = new THREE.Mesh(widgetUnitCube, new THREE.MeshBasicMaterial({color:0xff8800}));
+    // Slightly smaller than the center grab cube
+    tlMesh.scale.setScalar(0.12 * baseScale * 4.0);
+    brMesh.scale.setScalar(0.12 * baseScale * 4.0);
     tlMesh.userData.type = 'scale'; tlMesh.userData.corner = 'topLeft';
     brMesh.userData.type = 'scale'; brMesh.userData.corner = 'bottomRight';
     tlMesh.position.copy(tlPos);
     brMesh.position.copy(brPos);
-    applyColorToMesh(tlMesh, 0xff69b4);
-    applyColorToMesh(brMesh, 0xffa500);
+    applyColorToMesh(tlMesh, 0xff8800);
+    applyColorToMesh(brMesh, 0xff8800);
     widgetGroup.add(tlMesh, brMesh);
 
-    // Add purple confirmation ball at center
-    const ballGeometry = new THREE.SphereGeometry(0.12, 16, 16);
-    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0x9b59d6, emissive: 0x9b59d6, emissiveIntensity: 0.5 });
-    confirmBall = new THREE.Mesh(ballGeometry, ballMaterial);
-    confirmBall.scale.setScalar(baseScale * 0.9);
-    confirmBall.userData.type = 'confirm';
-    confirmBall.position.copy(center);
-    widgetGroup.add(confirmBall);
+    const moveMaterial = new THREE.MeshBasicMaterial({ color: 0x0066ff });
+    moveHandle = new THREE.Mesh(widgetUnitCube, moveMaterial);
+    moveHandle.scale.setScalar(0.12 * baseScale * 4.25);
+    moveHandle.userData.type = 'move';
+    moveHandle.position.copy(center);
+    applyColorToMesh(moveHandle, 0x0066ff);
+    widgetGroup.add(moveHandle);
+
+    readyButton = new THREE.Group();
+    readyButton.userData.type = 'ready';
+    readyButton.frustumCulled = false;
+    const readyGeom = new THREE.BoxGeometry(0.28, 0.10, 0.04);
+    const readyMat = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
+    const readyMesh = new THREE.Mesh(readyGeom, readyMat);
+    readyMesh.frustumCulled = false;
+    readyButton.add(readyMesh);
+    const readyText = new Text();
+    readyText.text = 'Ready?';
+    readyText.anchorX = 'center';
+    readyText.anchorY = 'middle';
+    readyText.fontSize = 0.055;
+    readyText.color = 0xffffff;
+    readyText.frustumCulled = false;
+    readyText.position.set(0, 0, 0.03);
+    readyText.sync();
+    readyButton.add(readyText);
+    readyButton.position.copy(center);
+    widgetGroup.add(readyButton);
+
+    const rotateBarGeometry = new THREE.BoxGeometry(0.06, 0.26, 0.06);
+    const rotateBarMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    rotateHandleLeft = new THREE.Mesh(rotateBarGeometry, rotateBarMaterial);
+    rotateHandleLeft.scale.setScalar(baseScale * 5);
+    rotateHandleLeft.userData.type = 'rotateY';
+    rotateHandleLeft.userData.side = 'left';
+    applyColorToMesh(rotateHandleLeft, 0xffff00);
+    widgetGroup.add(rotateHandleLeft);
+
+    rotateHandleRight = new THREE.Mesh(rotateBarGeometry, rotateBarMaterial);
+    rotateHandleRight.scale.setScalar(baseScale * 5);
+    rotateHandleRight.userData.type = 'rotateY';
+    rotateHandleRight.userData.side = 'right';
+    applyColorToMesh(rotateHandleRight, 0xffff00);
+    widgetGroup.add(rotateHandleRight);
 
     widgetGroup.visible = true;
 }
 
 function updateWidgetPositions() {
     if (!widgetGroup || !screenRect) return;
+
+    const screenQ = new THREE.Quaternion();
+    screenRect.getWorldQuaternion(screenQ);
     
     // Use the actual corner coordinates (not bbox which changes with rotation)
     const tl = new THREE.Vector3(topLeftCorner[0], topLeftCorner[1], topLeftCorner[2]);
@@ -207,8 +317,71 @@ function updateWidgetPositions() {
             } else {
                 child.position.copy(worldPos);
             }
+
+            child.quaternion.copy(screenQ);
         }
     });
+
+    if (moveHandle && rectYDistance !== null) {
+        const worldPos = center.clone();
+        // Put the handle in the center of the screen, slightly in front of it so it's easy to ray-hit.
+        if (screenRect) {
+            const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(screenQ).normalize();
+            worldPos.add(normal.multiplyScalar(0.06));
+        }
+        const localPos = worldPos.clone();
+        widgetGroup.worldToLocal(localPos);
+        moveHandle.position.copy(localPos);
+
+        moveHandle.quaternion.copy(screenQ);
+    }
+
+    if (readyButton && rectYDistance !== null) {
+        const worldPos = center.clone();
+        // Offset scales with the current calibrated screen size
+        worldPos.y -= rectYDistance * 0.6;
+        if (screenRect) {
+            const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(screenQ).normalize();
+            const normalOffset = (typeof rectXDistance === 'number' && rectXDistance) ? (0.03 * (rectXDistance / 1.0)) : 0.03;
+            worldPos.add(normal.multiplyScalar(normalOffset));
+        }
+        const localPos = worldPos.clone();
+        widgetGroup.worldToLocal(localPos);
+        readyButton.position.copy(localPos);
+
+        readyButton.quaternion.copy(screenQ);
+    }
+
+    if ((rotateHandleLeft || rotateHandleRight) && rectXDistance !== null) {
+        const dx = bottomRightCorner[0] - topLeftCorner[0];
+        const dz = bottomRightCorner[2] - topLeftCorner[2];
+        const screenXDir = new THREE.Vector3(dx, 0, dz);
+        if (screenXDir.lengthSq() > 1e-8) screenXDir.normalize();
+
+        const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(screenQ).normalize();
+
+        const margin = 0.04;
+        const xOffset = (rectXDistance / 2) + margin;
+
+        if (rotateHandleLeft) {
+            const worldPos = center.clone()
+                .add(screenXDir.clone().multiplyScalar(-xOffset))
+                .add(normal.clone().multiplyScalar(0.02));
+            const localPos = worldPos.clone();
+            widgetGroup.worldToLocal(localPos);
+            rotateHandleLeft.position.copy(localPos);
+            rotateHandleLeft.quaternion.copy(screenQ);
+        }
+        if (rotateHandleRight) {
+            const worldPos = center.clone()
+                .add(screenXDir.clone().multiplyScalar(xOffset))
+                .add(normal.clone().multiplyScalar(0.02));
+            const localPos = worldPos.clone();
+            widgetGroup.worldToLocal(localPos);
+            rotateHandleRight.position.copy(localPos);
+            rotateHandleRight.quaternion.copy(screenQ);
+        }
+    }
 }
 
 // ---------- Scene setup ----------
@@ -222,7 +395,7 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
     loadWidgetTemplates();
 
     const floorGeometry = new THREE.PlaneGeometry(6, 6);
-    const floorMaterial = new THREE.MeshBasicMaterial({color: 'black', transparent: true, opacity: 0.5 });
+    const floorMaterial = new THREE.MeshBasicMaterial({color: 'black', transparent: true, opacity: 0.0 });
     floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotateX(-Math.PI / 2);
     floor.position.y = -EYE_HEIGHT;
@@ -233,20 +406,24 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
     rayHelper.visible = false;
     scene.add(rayHelper);
 
-    statusDisplay = new Text();
-    statusDisplay.anchorX = 'left';
-    statusDisplay.anchorY = 'top';
-    statusDisplay.fontSize = 0.015;
-    statusDisplay.color = 0xffffff;
-    statusDisplay.outlineWidth = 0.001;
-    statusDisplay.outlineColor = 0x000000;
-    statusDisplay.maxWidth = 0.25;
-    camera.add(statusDisplay);
-    statusDisplay.position.set(-0.08, 0.06, -0.5);
+    handDebugGroup = new THREE.Group();
+    handDebugGroup.visible = false;
+    scene.add(handDebugGroup);
 }
 
 // ---------- Frame loop ----------
-async function onFrame(delta, time, {scene, camera, renderer, player, controllers}) {
+async function onFrame(delta, time, {scene, camera, renderer, player, controllers}, xrFrame) {
+    // Hide the screenRect visualization when overlay is disabled (but keep it raycastable).
+    // Always show it during calibration.
+    {
+        const overlayOn = !!configDisplayOverlayEnabled;
+        const shouldShowGhost = !calibrated || overlayOn;
+        if (screenRect && lastScreenRectOverlayEnabled !== shouldShowGhost) {
+            setScreenRectOpacity(shouldShowGhost ? 0.2 : 0.0);
+            lastScreenRectOverlayEnabled = shouldShowGhost;
+        }
+    }
+
     // Compute per-controller screen intersection state and screen metadata (store to shared latest values)
     latestScreenMeta = {
         screenWidth,
@@ -290,23 +467,84 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
         });
     }
 
+    let handState = null;
+    try {
+        const session = renderer && renderer.xr && renderer.xr.getSession ? renderer.xr.getSession() : null;
+        if (session && xrFrame && typeof xrFrame.getJointPose === 'function') {
+            const referenceSpace = renderer.xr.getReferenceSpace ? renderer.xr.getReferenceSpace() : null;
+            if (referenceSpace) {
+                handState = { left: { tracked: false, joints: {} }, right: { tracked: false, joints: {} } };
+                for (const inputSource of session.inputSources) {
+                    if (!inputSource || !inputSource.hand) continue;
+                    const handedness = inputSource.handedness;
+                    if (handedness !== 'left' && handedness !== 'right') continue;
+
+                    const joints = {};
+                    for (const [jointName, jointSpace] of inputSource.hand.entries()) {
+                        const pose = xrFrame.getJointPose(jointSpace, referenceSpace);
+                        if (!pose) continue;
+                        joints[jointName] = {
+                            position: [pose.transform.position.x, pose.transform.position.y, pose.transform.position.z],
+                            radius: (typeof pose.radius === 'number' ? pose.radius : null),
+                        };
+                    }
+
+                    handState[handedness] = { tracked: true, joints };
+                }
+            }
+        }
+    } catch (e) {
+        handState = null;
+    }
+
+    if (handDebugGroup) {
+        const enabled = !!configHandJointsDebugEnabled;
+        handDebugGroup.visible = enabled;
+        if (enabled && handState) {
+            const used = new Set();
+            for (const side of ['left', 'right']) {
+                const h = handState[side];
+                if (!h || !h.tracked || !h.joints) continue;
+                for (const [jointName, joint] of Object.entries(h.joints)) {
+                    if (!joint || !Array.isArray(joint.position)) continue;
+                    const key = `${side}:${jointName}`;
+                    used.add(key);
+                    let mesh = handDebugMeshes.get(key);
+                    if (!mesh) {
+                        const geom = new THREE.SphereGeometry(0.008, 8, 6);
+                        const mat = new THREE.MeshBasicMaterial({ color: side === 'left' ? 0x00ffcc : 0xff00cc });
+                        mesh = new THREE.Mesh(geom, mat);
+                        handDebugGroup.add(mesh);
+                        handDebugMeshes.set(key, mesh);
+                    }
+                    mesh.visible = true;
+                    mesh.position.set(joint.position[0], joint.position[1], joint.position[2]);
+                    const r = (typeof joint.radius === 'number' && Number.isFinite(joint.radius)) ? joint.radius : null;
+                    const s = r ? (r / 0.008) : 1.0;
+                    mesh.scale.setScalar(s);
+                }
+            }
+            for (const [key, mesh] of handDebugMeshes.entries()) {
+                if (!used.has(key) && mesh) mesh.visible = false;
+            }
+        } else {
+            for (const mesh of handDebugMeshes.values()) {
+                if (mesh) mesh.visible = false;
+            }
+        }
+    }
+
     // Drive game updates when started, provide screenState + screenMeta in the context
     if (gameStartedVR) {
         try {
-            gameAPI.updateVR(delta, time, { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage, screenState: latestScreenState, screenMeta: latestScreenMeta, screenRect });
+            const ctx = { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage, screenState: latestScreenState, screenMeta: latestScreenMeta, screenRect, displayOverlayEnabled: configDisplayOverlayEnabled, handState, drawColorHex: configDrawColorHex, drawThicknessPx: configDrawThicknessPx, drawAlpha: configDrawAlpha };
+            lastGameVRContext = ctx;
+            gameAPI.updateVR(delta, time, ctx);
         } catch (e) {
             console.error('game updateVR error', e);
         }
     }
     const controllerConfigs = [controllers.right, controllers.left];
-
-    if (!calibrated) {
-        statusDisplay.text = !aspectRatio ? 'Waiting for screen...' : 'Manual calibration: Use right controller. Trigger to grab; aim at purple ball & trigger to Save';
-        statusDisplay.sync();
-    } else {
-        statusDisplay.text = 'Ready | Aim at purple ball & trigger to Recalibrate';
-        statusDisplay.sync();
-    }
 
     // Calibration flow (manual)
     if (!calibrated && aspectRatio) {
@@ -329,6 +567,9 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 let hit = widgetIntersects[0].object;
                 while (hit.parent && hit.parent !== widgetGroup) hit = hit.parent;
                 hoverTarget = hit;
+                hoveredWidgetHit = widgetIntersects[0];
+            } else {
+                hoveredWidgetHit = null;
             }
 
             if (hoverTarget !== hoveredWidget) {
@@ -339,9 +580,8 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
 
             // Start grab
             if (gamepad.getButtonDown && gamepad.getButtonDown(XR_BUTTONS.TRIGGER) && hoveredWidget && !grabbedWidget) {
-                // Skip if we're clicking the confirm ball
-                if (hoveredWidget.userData && hoveredWidget.userData.type === 'confirm') {
-                    // Handle confirmation ball click - commit calibration
+                if (hoveredWidget.userData && hoveredWidget.userData.type === 'ready') {
+                    // Handle ready button click - commit calibration
                     cm.sendMessage({
                         type: 'CALIBRATION_COMMIT',
                         message: {
@@ -355,19 +595,28 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                     // Start the active game once calibration is committed
                     if (!gameStartedVR) {
                         gameStartedVR = true;
-                        try { await gameAPI.startVR({ scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { console.error('game startVR error', e); }
+                        try {
+                            const startCtx = { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage };
+                            lastGameVRContext = startCtx;
+                            gameAPI.setActiveGame(configActiveGameId, { vrContext: lastGameVRContext });
+                            await gameAPI.startVR(startCtx);
+                        } catch (e) {
+                            console.error('game startVR error', e);
+                        }
                     }
                     fineTuneMode = false;
                     rayHelper.visible = false;
                     widgetsSpawned = false;
-                    // Keep only the confirm ball visible
+                    // Keep only the ready button visible
                     if (widgetGroup) {
                         widgetGroup.children.forEach((child) => {
-                            if (child.userData && child.userData.type !== 'confirm') {
+                            if (child.userData && child.userData.type !== 'ready') {
                                 child.visible = false;
                             }
                         });
                     }
+                    if (readyButton) readyButton.visible = false;
+                    if (widgetGroup) widgetGroup.visible = false;
                     if (!screenRect && aspectRatio) addScreenRect(scene);
                     if (screenRect) screenRect.visible = true;
                     if (frontLabel) { if (frontLabel.parent) frontLabel.parent.remove(frontLabel); frontLabel = null; }
@@ -388,17 +637,28 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                     startBottomRight: [...bottomRightCorner],
                     startWidgetWorldPos
                 };
-                if (grabbedWidget.userData && grabbedWidget.userData.axis) {
-                    grabState.axisWorld = grabbedWidget.userData.axis.clone().normalize();
-                    grabState.startProjected = startControllerPos.clone().sub(startWidgetWorldPos).dot(grabState.axisWorld) || 0;
-                } else {
-                    grabState.axisWorld = null;
-                    grabState.startProjected = 0;
+                if ((grabState.type === 'move' || grabState.type === 'scale' || grabState.type === 'rotateY') && hoveredWidgetHit) {
+                    grabState.grabDistance = hoveredWidgetHit.distance;
+                    grabState.grabOffset = startWidgetWorldPos.clone().sub(hoveredWidgetHit.point);
                 }
-                if (grabState.type === 'rotate') {
-                    const startVec = startControllerPos.clone().sub(startWidgetWorldPos);
-                    grabState.startRotateAngle = Math.atan2(startVec.z, startVec.x);
-                    grabState.startWidgetYRotation = grabbedWidget.rotation ? grabbedWidget.rotation.y || 0 : 0;
+                if (grabState.type === 'rotateY') {
+                    const centerW = new THREE.Vector3(
+                        grabState.startTopLeft[0] + (grabState.startBottomRight[0] - grabState.startTopLeft[0]) / 2,
+                        grabState.startTopLeft[1] - (rectYDistance / 2),
+                        grabState.startTopLeft[2] + (grabState.startBottomRight[2] - grabState.startTopLeft[2]) / 2
+                    );
+                    grabState.rotateCenter = centerW;
+                    if (typeof grabState.grabDistance === 'number') {
+                        const rayDir = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion).normalize();
+                        const hitPoint = raySpace.position.clone().add(rayDir.multiplyScalar(grabState.grabDistance));
+                        const offset = grabState.grabOffset ? grabState.grabOffset.clone() : new THREE.Vector3();
+                        const anchoredPos = hitPoint.clone().add(offset);
+                        const rel = anchoredPos.clone().sub(centerW);
+                        grabState.startRotateAngle = Math.atan2(rel.z, rel.x);
+                    } else {
+                        const rel = startControllerPos.clone().sub(centerW);
+                        grabState.startRotateAngle = Math.atan2(rel.z, rel.x);
+                    }
                 }
                 applyColorToMesh(grabbedWidget, 0xffffff);
                 if (hoveredWidget) { clearHighlight(hoveredWidget); hoveredWidget = null; }
@@ -407,68 +667,93 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
             // Update while grabbing
             if (grabbedWidget && gamepad.getButton && gamepad.getButton(XR_BUTTONS.TRIGGER)) {
                 const type = grabbedWidget.userData.type;
-                if (type === 'translate') {
-                    const axisWorld = grabState.axisWorld ? grabState.axisWorld.clone() : (grabbedWidget.userData.axis ? grabbedWidget.userData.axis.clone().normalize() : new THREE.Vector3(1,0,0));
-                    const current = raySpace.position.clone();
-                    const rel = current.clone().sub(grabState.startWidgetWorldPos);
-                    const amount = rel.dot(axisWorld) - (grabState.startProjected || 0);
-                    const translateVec = axisWorld.clone().multiplyScalar(amount);
+                if (type === 'move') {
+                    const rayDir = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion).normalize();
+                    const d = typeof grabState.grabDistance === 'number' ? grabState.grabDistance : 0;
+                    const hitPoint = raySpace.position.clone().add(rayDir.multiplyScalar(d));
+                    const offset = grabState.grabOffset ? grabState.grabOffset.clone() : new THREE.Vector3();
+                    const newWorldPos = hitPoint.clone().add(offset);
+                    const translateVec = newWorldPos.clone().sub(grabState.startWidgetWorldPos);
                     topLeftCorner[0] = grabState.startTopLeft[0] + translateVec.x;
                     topLeftCorner[1] = grabState.startTopLeft[1] + translateVec.y;
                     topLeftCorner[2] = grabState.startTopLeft[2] + translateVec.z;
                     bottomRightCorner[0] = grabState.startBottomRight[0] + translateVec.x;
                     bottomRightCorner[1] = grabState.startBottomRight[1] + translateVec.y;
                     bottomRightCorner[2] = grabState.startBottomRight[2] + translateVec.z;
-                    if (grabState.startWidgetWorldPos) {
-                        const newWorldPos = grabState.startWidgetWorldPos.clone().add(translateVec);
-                        if (grabbedWidget.parent) {
-                            const localPos = newWorldPos.clone();
-                            grabbedWidget.parent.worldToLocal(localPos);
-                            grabbedWidget.position.copy(localPos);
-                        } else {
-                            grabbedWidget.position.copy(newWorldPos);
-                        }
+
+                    if (grabbedWidget.parent) {
+                        const localPos = newWorldPos.clone();
+                        grabbedWidget.parent.worldToLocal(localPos);
+                        grabbedWidget.position.copy(localPos);
+                    } else {
+                        grabbedWidget.position.copy(newWorldPos);
                     }
-                } else if (type === 'rotate') {
-                    const widgetCenter = grabState.startWidgetWorldPos.clone();
-                    const startAngle = grabState.startRotateAngle !== undefined ? grabState.startRotateAngle : Math.atan2(grabState.startControllerPos.z - widgetCenter.z, grabState.startControllerPos.x - widgetCenter.x);
-                    const currAngle = Math.atan2(raySpace.position.z - widgetCenter.z, raySpace.position.x - widgetCenter.x);
-                    const deltaAngle = currAngle - startAngle;
-                    const center = new THREE.Vector3(
+                } else if (type === 'scale') {
+                    const cornerName = grabbedWidget.userData.corner;
+                    const startTL = grabState.startTopLeft;
+                    const startBR = grabState.startBottomRight;
+                    const startTLV = new THREE.Vector3(startTL[0], startTL[1], startTL[2]);
+                    const startBRV = new THREE.Vector3(startBR[0], startBR[1], startBR[2]);
+                    const centerV = startTLV.clone().add(startBRV).multiplyScalar(0.5);
+
+                    const startV = cornerName === 'topLeft' ? startTLV : startBRV;
+                    const r0 = startV.clone().sub(centerV);
+                    const r0Len = r0.length();
+                    if (r0Len < 1e-6) return;
+                    const dirNorm = r0.clone().divideScalar(r0Len);
+
+                    let projected = 0;
+                    if (typeof grabState.grabDistance === 'number') {
+                        const rayDir = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion).normalize();
+                        const hitPoint = raySpace.position.clone().add(rayDir.multiplyScalar(grabState.grabDistance));
+                        const offset = grabState.grabOffset ? grabState.grabOffset.clone() : new THREE.Vector3();
+                        const anchoredPos = hitPoint.clone().add(offset);
+                        const delta = anchoredPos.clone().sub(grabState.startWidgetWorldPos);
+                        projected = delta.dot(dirNorm);
+                    } else {
+                        const curr = raySpace.position;
+                        const delta = curr.clone().sub(grabState.startControllerPos);
+                        projected = delta.dot(dirNorm);
+                    }
+                    const k = 1.0;
+                    const scaleFactor = Math.exp(k * (projected / Math.max(0.001, r0Len)));
+                    const r1 = r0.clone().multiplyScalar(scaleFactor);
+                    const newMoving = centerV.clone().add(r1);
+                    const newOpposite = centerV.clone().sub(r1);
+                    if (cornerName === 'topLeft') {
+                        topLeftCorner = [newMoving.x, newMoving.y, newMoving.z];
+                        bottomRightCorner = [newOpposite.x, newOpposite.y, newOpposite.z];
+                    } else {
+                        bottomRightCorner = [newMoving.x, newMoving.y, newMoving.z];
+                        topLeftCorner = [newOpposite.x, newOpposite.y, newOpposite.z];
+                    }
+                } else if (type === 'rotateY') {
+                    const centerW = grabState.rotateCenter ? grabState.rotateCenter.clone() : new THREE.Vector3(
                         grabState.startTopLeft[0] + (grabState.startBottomRight[0] - grabState.startTopLeft[0]) / 2,
                         grabState.startTopLeft[1] - (rectYDistance / 2),
                         grabState.startTopLeft[2] + (grabState.startBottomRight[2] - grabState.startTopLeft[2]) / 2
                     );
+                    let currAngle = 0;
+                    if (typeof grabState.grabDistance === 'number') {
+                        const rayDir = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion).normalize();
+                        const hitPoint = raySpace.position.clone().add(rayDir.multiplyScalar(grabState.grabDistance));
+                        const offset = grabState.grabOffset ? grabState.grabOffset.clone() : new THREE.Vector3();
+                        const anchoredPos = hitPoint.clone().add(offset);
+                        const rel = anchoredPos.clone().sub(centerW);
+                        currAngle = Math.atan2(rel.z, rel.x);
+                    } else {
+                        const rel = raySpace.position.clone().sub(centerW);
+                        currAngle = Math.atan2(rel.z, rel.x);
+                    }
+                    const startAngle = grabState.startRotateAngle !== undefined ? grabState.startRotateAngle : 0;
+                    const deltaAngle = currAngle - startAngle;
+
                     const tl = new THREE.Vector3(grabState.startTopLeft[0], grabState.startTopLeft[1], grabState.startTopLeft[2]);
                     const br = new THREE.Vector3(grabState.startBottomRight[0], grabState.startBottomRight[1], grabState.startBottomRight[2]);
-                    const newTL = rotatePointAroundY(tl, center, deltaAngle);
-                    const newBR = rotatePointAroundY(br, center, deltaAngle);
+                    const newTL = rotatePointAroundY(tl, centerW, deltaAngle);
+                    const newBR = rotatePointAroundY(br, centerW, deltaAngle);
                     topLeftCorner = [newTL.x, newTL.y, newTL.z];
                     bottomRightCorner = [newBR.x, newBR.y, newBR.z];
-                    if (grabState.startWidgetYRotation !== undefined) {
-                        const visualFactor = 0.35;
-                        grabbedWidget.rotation.y = grabState.startWidgetYRotation - deltaAngle * visualFactor;
-                    }
-                } else if (type === 'scale') {
-                    const cornerName = grabbedWidget.userData.corner;
-                    const fixed = cornerName === 'topLeft' ? grabState.startBottomRight : grabState.startTopLeft;
-                    const movingStart = cornerName === 'topLeft' ? grabState.startTopLeft : grabState.startBottomRight;
-                    const fixedV = new THREE.Vector3(fixed[0], fixed[1], fixed[2]);
-                    const startV = new THREE.Vector3(movingStart[0], movingStart[1], movingStart[2]);
-                    const dir = startV.clone().sub(fixedV);
-                    const dirNorm = dir.clone().normalize();
-                    const curr = raySpace.position;
-                    const delta = curr.clone().sub(grabState.startControllerPos);
-                    const projected = delta.dot(dirNorm);
-                    const k = 1.0;
-                    const scaleFactor = Math.exp(k * (projected / Math.max(0.001, dir.length())));
-                    const newVec = dir.clone().multiplyScalar(scaleFactor);
-                    const newMoving = fixedV.clone().add(newVec);
-                    if (cornerName === 'topLeft') {
-                        topLeftCorner = [newMoving.x, newMoving.y, newMoving.z];
-                    } else {
-                        bottomRightCorner = [newMoving.x, newMoving.y, newMoving.z];
-                    }
                 }
                 // Update measures & visuals
                 const dx = bottomRightCorner[0] - topLeftCorner[0];
@@ -524,18 +809,18 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
         if (calibrated && rightController && rightController.gamepad && rightController.raySpace) {
             const { gamepad, raySpace } = rightController;
             
-            // Check if aiming at confirm ball
+            // Check if aiming at ready button
             const rayDirection = new THREE.Vector3(0,0,-1).applyQuaternion(raySpace.quaternion).normalize();
             const raycaster = new THREE.Raycaster();
             raycaster.set(raySpace.position, rayDirection);
-            let ballIntersects = [];
-            if (confirmBall && confirmBall.visible) {
-                ballIntersects = raycaster.intersectObject(confirmBall, true);
+            let readyIntersects = [];
+            if (readyButton && readyButton.visible) {
+                readyIntersects = raycaster.intersectObject(readyButton, true);
             }
             
             // Highlight ball when hovering
-            if (ballIntersects.length > 0) {
-                highlightWidget(confirmBall);
+            if (readyIntersects.length > 0) {
+                highlightWidget(readyButton);
                 
                 // Trigger on ball restarts calibration
                 if (gamepad.getButtonDown && gamepad.getButtonDown(XR_BUTTONS.TRIGGER)) {
@@ -557,7 +842,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                 }
             } else {
                 // Clear highlight when not hovering
-                if (confirmBall) clearHighlight(confirmBall);
+                if (readyButton) clearHighlight(readyButton);
             }
         }
     } catch (e) {
@@ -575,7 +860,16 @@ function addScreenRect(scene) {
     rectYDistance = topLeftCorner[1] - bottomRightCorner[1]; // Use actual Y distance, not aspect-locked
 
     if (!screenRect) {
-        if (curvedScreenTemplate) {
+        if (getActiveScreenMode() === 'flat') {
+            const unitGeometry = new THREE.PlaneGeometry(1, 1);
+            const screenRectMaterial = new THREE.MeshBasicMaterial({
+                color: 'white',
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide
+            });
+            screenRect = new THREE.Mesh(unitGeometry, screenRectMaterial);
+        } else if (curvedScreenTemplate) {
             screenRect = curvedScreenTemplate.clone();
             // Apply transparent material to all meshes in the loaded model
             screenRect.traverse((node) => {
@@ -587,6 +881,7 @@ function addScreenRect(scene) {
                         side: THREE.DoubleSide
                     });
                     node.material.needsUpdate = true;
+                    node.frustumCulled = false;
                 }
             });
         } else {
@@ -631,7 +926,10 @@ function addScreenRect(scene) {
         topLeftCorner[2] + (rectXDistance / 2) * Math.sin(angle)
     );
     screenRect.position.copy(centerPos);
-    screenRect.rotation.set(0, -angle + Math.PI, 0); // Add PI to flip mesh 180 degrees
+    // Curved GLB is authored facing opposite our expected forward, so we flip it.
+    // A plain PlaneGeometry is already aligned, so flipping would mirror UV->world mapping.
+    const flipY = getActiveScreenMode() === 'flat' ? 0 : Math.PI;
+    screenRect.rotation.set(0, -angle + flipY, 0);
 
     // Labels
     if (!frontLabel) {
@@ -727,10 +1025,32 @@ function addScreenRect(scene) {
 
 // ---------- Calibration messages ----------
 function handleCalibration(message) {
-    if (calibrated) return;
     screenWidth = message.screenWidth;
     screenHeight = message.screenHeight;
     aspectRatio = screenWidth / screenHeight;
+
+    // If we're already calibrated, keep width (rectXDistance) and adapt height to match aspect ratio.
+    if (calibrated && rectXDistance && aspectRatio) {
+        const prevRectY = rectYDistance;
+        const nextRectY = rectXDistance / aspectRatio;
+        if (!prevRectY || Math.abs(nextRectY - prevRectY) > 1e-6) {
+            const tl = new THREE.Vector3(topLeftCorner[0], topLeftCorner[1], topLeftCorner[2]);
+            const br = new THREE.Vector3(bottomRightCorner[0], bottomRightCorner[1], bottomRightCorner[2]);
+            const center = tl.clone().add(br).multiplyScalar(0.5);
+            rectYDistance = nextRectY;
+
+            // Preserve horizontal placement and rotation; adjust Y extents about center.
+            topLeftCorner[1] = center.y + rectYDistance / 2;
+            bottomRightCorner[1] = center.y - rectYDistance / 2;
+
+            addScreenRect(sceneVar);
+            updateWidgetPositions();
+        }
+        return;
+    }
+
+    if (calibrated) return;
+
     if (sceneVar && !screenRect) {
         if (!curvedScreenTemplate) {
             console.warn('Curved screen template not loaded yet, retrying in 500ms...');
@@ -739,7 +1059,7 @@ function handleCalibration(message) {
         }
         const center = new THREE.Vector3(0, -0.3, -0.6);
         rectXDistance = 1.0;
-        rectYDistance = 0.5; // Fixed height, not locked to canvas aspect ratio
+        rectYDistance = aspectRatio ? (rectXDistance / aspectRatio) : 0.5;
         topLeftCorner = [center.x - rectXDistance / 2, center.y + rectYDistance / 2, center.z];
         bottomRightCorner = [center.x + rectXDistance / 2, center.y - rectYDistance / 2, center.z];
         addScreenRect(sceneVar);
@@ -766,10 +1086,7 @@ function resetCalibration() {
 cm.registerToServer('VR').then(updateStatus).catch((e) => { console.error('Failed to register:', e); updateStatus(); });
 function updateStatus() {
     const state = cm.getConnectionState();
-    if (statusDisplay) {
-        statusDisplay.text = `Connection Status: ${state.state}`;
-        statusDisplay.sync();
-    }
+    void state;
 }
 
 cm.handleEvent('CLOSE', updateStatus);

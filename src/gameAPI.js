@@ -1,10 +1,45 @@
 import * as cm from './clientManager.js';
 
-// Minimal game glue: register a single active game implementation
+// Game glue: register multiple games and switch between them at runtime.
+const games = new Map();
+let activeGameId = null;
 let currentGame = null;
 
-export function registerGame(game) {
-    currentGame = game || null;
+export function registerGame(id, game) {
+    if (!id) return;
+    games.set(String(id), game || null);
+    if (!activeGameId) {
+        setActiveGame(String(id));
+    }
+}
+
+export function registerGames(entries) {
+    if (!entries) return;
+    for (const [id, game] of Object.entries(entries)) {
+        registerGame(id, game);
+    }
+}
+
+export function getActiveGameId() {
+    return activeGameId;
+}
+
+export function setActiveGame(id, { vrContext = null, screenContext = null } = {}) {
+    const nextId = String(id);
+    if (activeGameId === nextId && currentGame) return;
+
+    const prev = currentGame;
+    if (prev) {
+        if (vrContext && typeof prev.disposeVR === 'function') {
+            try { prev.disposeVR(vrContext); } catch (e) { console.error('game disposeVR error', e); }
+        }
+        if (screenContext && typeof prev.disposeScreen === 'function') {
+            try { prev.disposeScreen(screenContext); } catch (e) { console.error('game disposeScreen error', e); }
+        }
+    }
+
+    activeGameId = nextId;
+    currentGame = games.get(nextId) || null;
 }
 
 export function sendGameMessage(payload) {
@@ -47,16 +82,21 @@ cm.handleEvent('GAME_EVENT', (msg) => {
 });
 
 // Auto-load a default no-op game if none is registered to avoid checks elsewhere
-registerGame({
+registerGame('noop', {
     startVR: async () => {},
     updateVR: () => {},
     startScreen: async () => {},
     updateScreen: () => {},
-    onMessage: () => {}
+    onMessage: () => {},
+    disposeVR: () => {},
+    disposeScreen: () => {}
 });
 
 export default {
     registerGame,
+    registerGames,
+    setActiveGame,
+    getActiveGameId,
     sendGameMessage,
     onMessage,
     startVR,

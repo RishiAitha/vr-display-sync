@@ -5,9 +5,11 @@
   "private": true,
   "scripts": {
     "build": "webpack --mode production",
+    "cert": "sh -c 'mkdir -p .cert && if [ ! -f .cert/key.pem ] || [ ! -f .cert/cert.pem ]; then openssl req -x509 -newkey rsa:2048 -nodes -keyout .cert/key.pem -out .cert/cert.pem -days 365 -subj \"/CN=${CERT_CN:-localhost}\"; fi'",
     "watch": "webpack --watch",
     "start": "node server.js",
-    "dev": "npm-run-all --parallel watch start"
+    "dev": "npm-run-all --parallel watch start",
+    "dev:https": "npm run cert && SSL_KEY=.cert/key.pem SSL_CERT=.cert/cert.pem npm run dev"
   },
   "keywords": [],
   "author": "",

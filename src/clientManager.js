@@ -19,7 +19,7 @@ export const RESERVED_MESSAGE_TYPES = [
         'REGISTER_CLIENT', 'REGISTRATION_SUCCESS', 'REGISTRATION_ERROR',
         'NEW_CLIENT', 'CLIENT_DISCONNECTED',
         'CALIBRATION_COMMIT', 'SCREEN_CALIBRATION', 'SCREEN_DISCONNECTED',
-        'GAME_EVENT', 'ERROR'
+        'GAME_EVENT', 'CONFIG_UPDATE', 'ERROR'
 ];
 
 export function registerToServer(type) {
@@ -116,6 +116,12 @@ function handleIncomingMessage(message, { resolve, reject, timeout }) {
             // Forward game-level events to any registered handler (both SCREEN and VR should receive)
             {
                 const handlerFunction = eventActions.get('GAME_EVENT');
+                if (typeof handlerFunction === 'function') handlerFunction(message.message);
+            }
+            break;
+        case 'CONFIG_UPDATE':
+            {
+                const handlerFunction = eventActions.get('CONFIG_UPDATE');
                 if (typeof handlerFunction === 'function') handlerFunction(message.message);
             }
             break;

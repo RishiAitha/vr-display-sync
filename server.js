@@ -11,6 +11,88 @@ const port = process.env.PORT || 3000;
 const sslKeyPath = process.env.SSL_KEY;
 const sslCertPath = process.env.SSL_CERT;
 
+const appConfig = {
+    activeGameId: 'balls',
+    screenGeometryMode: 'curved',
+    displayOverlayEnabled: true,
+    gravityMultiplier: 1.0,
+    swipeForceMultiplier: 1.0,
+    handJointsDebugEnabled: false,
+    handTouchRadiusMeters: 0.06,
+    handMinSwipeSpeedMetersPerSec: 0.25,
+    handSwipeBallCooldownSec: 0.10,
+    drawColorHex: '#111111',
+    drawThicknessPx: 20,
+    drawAlpha: 0.22,
+};
+
+const persistedConfigPath = path.join(__dirname, '.server-config.json');
+
+function applyPersistedConfig(raw) {
+    if (!raw || typeof raw !== 'object') return;
+
+    if (typeof raw.activeGameId === 'string') {
+        appConfig.activeGameId = raw.activeGameId;
+    }
+
+    if (typeof raw.screenGeometryMode === 'string') {
+        const mode = String(raw.screenGeometryMode).toLowerCase();
+        if (mode === 'flat' || mode === 'curved') appConfig.screenGeometryMode = mode;
+    }
+    if (typeof raw.displayOverlayEnabled === 'boolean') {
+        appConfig.displayOverlayEnabled = raw.displayOverlayEnabled;
+    }
+    if (typeof raw.gravityMultiplier === 'number' && Number.isFinite(raw.gravityMultiplier)) {
+        appConfig.gravityMultiplier = raw.gravityMultiplier;
+    }
+    if (typeof raw.swipeForceMultiplier === 'number' && Number.isFinite(raw.swipeForceMultiplier)) {
+        appConfig.swipeForceMultiplier = raw.swipeForceMultiplier;
+    }
+    if (typeof raw.handJointsDebugEnabled === 'boolean') {
+        appConfig.handJointsDebugEnabled = raw.handJointsDebugEnabled;
+    }
+    if (typeof raw.handTouchRadiusMeters === 'number' && Number.isFinite(raw.handTouchRadiusMeters)) {
+        appConfig.handTouchRadiusMeters = raw.handTouchRadiusMeters;
+    }
+    if (typeof raw.handMinSwipeSpeedMetersPerSec === 'number' && Number.isFinite(raw.handMinSwipeSpeedMetersPerSec)) {
+        appConfig.handMinSwipeSpeedMetersPerSec = raw.handMinSwipeSpeedMetersPerSec;
+    }
+    if (typeof raw.handSwipeBallCooldownSec === 'number' && Number.isFinite(raw.handSwipeBallCooldownSec)) {
+        appConfig.handSwipeBallCooldownSec = raw.handSwipeBallCooldownSec;
+    }
+
+    if (typeof raw.drawColorHex === 'string') {
+        appConfig.drawColorHex = raw.drawColorHex;
+    }
+    if (typeof raw.drawThicknessPx === 'number' && Number.isFinite(raw.drawThicknessPx)) {
+        appConfig.drawThicknessPx = raw.drawThicknessPx;
+    }
+    if (typeof raw.drawAlpha === 'number' && Number.isFinite(raw.drawAlpha)) {
+        appConfig.drawAlpha = raw.drawAlpha;
+    }
+}
+
+function loadPersistedConfig() {
+    try {
+        if (!fs.existsSync(persistedConfigPath)) return;
+        const text = fs.readFileSync(persistedConfigPath, 'utf8');
+        const raw = JSON.parse(text);
+        applyPersistedConfig(raw);
+    } catch (e) {
+        console.warn('Failed to load persisted server config:', e);
+    }
+}
+
+function savePersistedConfig() {
+    try {
+        fs.writeFileSync(persistedConfigPath, JSON.stringify(appConfig, null, 2));
+    } catch (e) {
+        console.warn('Failed to save persisted server config:', e);
+    }
+}
+
+loadPersistedConfig();
+
 const server = (sslKeyPath && sslCertPath)
     ? https.createServer(
         {
@@ -35,12 +117,99 @@ const routes = [
     { path: '/vr', file: 'vr.html' },
     { path: '/desktop', file: 'desktop.html' },
     { path: '/screen', file: 'screen.html' },
+    { path: '/settings', file: 'settings.html' },
 ];
 routes.forEach((route) => {
     app.get(route.path, (req, res) => {
         res.sendFile(path.join(__dirname, 'public', route.file));
     });
 });
+
+app.get('/api/config', (req, res) => {
+    res.json(appConfig);
+});
+
+app.post('/api/config', (req, res) => {
+    const next = req.body || {};
+    let changed = false;
+
+    if (typeof next.activeGameId === 'string') {
+        appConfig.activeGameId = next.activeGameId;
+        changed = true;
+    }
+    if (typeof next.screenGeometryMode === 'string') {
+        const mode = String(next.screenGeometryMode).toLowerCase();
+        if (mode === 'flat' || mode === 'curved') {
+            appConfig.screenGeometryMode = mode;
+            changed = true;
+        }
+    }
+    if (typeof next.displayOverlayEnabled === 'boolean') {
+        appConfig.displayOverlayEnabled = next.displayOverlayEnabled;
+        changed = true;
+    }
+    if (typeof next.handJointsDebugEnabled === 'boolean') {
+        appConfig.handJointsDebugEnabled = next.handJointsDebugEnabled;
+        changed = true;
+    }
+    if (typeof next.handTouchRadiusMeters === 'number' && Number.isFinite(next.handTouchRadiusMeters)) {
+        appConfig.handTouchRadiusMeters = next.handTouchRadiusMeters;
+        changed = true;
+    }
+    if (typeof next.handMinSwipeSpeedMetersPerSec === 'number' && Number.isFinite(next.handMinSwipeSpeedMetersPerSec)) {
+        appConfig.handMinSwipeSpeedMetersPerSec = next.handMinSwipeSpeedMetersPerSec;
+        changed = true;
+    }
+    if (typeof next.handSwipeBallCooldownSec === 'number' && Number.isFinite(next.handSwipeBallCooldownSec)) {
+        appConfig.handSwipeBallCooldownSec = next.handSwipeBallCooldownSec;
+        changed = true;
+    }
+    if (typeof next.swipeForceMultiplier === 'number' && Number.isFinite(next.swipeForceMultiplier)) {
+        appConfig.swipeForceMultiplier = next.swipeForceMultiplier;
+        changed = true;
+    }
+    if (typeof next.gravityMultiplier === 'number' && Number.isFinite(next.gravityMultiplier)) {
+        appConfig.gravityMultiplier = next.gravityMultiplier;
+        changed = true;
+    }
+    // Legacy compatibility: allow setting absolute gravity and convert it to a multiplier.
+    if (typeof next.gravityPixelsPerSec2 === 'number' && Number.isFinite(next.gravityPixelsPerSec2)) {
+        appConfig.gravityMultiplier = next.gravityPixelsPerSec2 / 980;
+        changed = true;
+    }
+
+    if (typeof next.drawColorHex === 'string') {
+        appConfig.drawColorHex = next.drawColorHex;
+        changed = true;
+    }
+    if (typeof next.drawThicknessPx === 'number' && Number.isFinite(next.drawThicknessPx)) {
+        appConfig.drawThicknessPx = next.drawThicknessPx;
+        changed = true;
+    }
+    if (typeof next.drawAlpha === 'number' && Number.isFinite(next.drawAlpha)) {
+        appConfig.drawAlpha = next.drawAlpha;
+        changed = true;
+    }
+
+    if (changed) {
+        savePersistedConfig();
+        broadcastConfig();
+    }
+    res.json(appConfig);
+});
+
+app.post('/api/draw/clear', (req, res) => {
+    for (const [clientWS] of connectedClients) {
+        sendMessage(clientWS, { type: 'GAME_EVENT', message: { event: 'DRAW_CLEAR' } });
+    }
+    res.json({ ok: true });
+});
+
+function broadcastConfig() {
+    for (const [clientWS] of connectedClients) {
+        sendMessage(clientWS, { type: 'CONFIG_UPDATE', message: appConfig });
+    }
+}
 
 function handleMessage(ws, data) {
     if (!data.type) {
@@ -96,6 +265,7 @@ function handleClientRegistration(ws, data) {
                 ws.userID = uuidv4();
                 connectedClients.set(ws, { type: 'SCREEN', userID: ws.userID });
                 sendMessage(ws, { type: 'REGISTRATION_SUCCESS', message: 'Successfully registered as SCREEN client' });
+                sendMessage(ws, { type: 'CONFIG_UPDATE', message: appConfig });
                 console.log('SCREEN client registered');
                 for (const [wsIter, clientInfo] of connectedClients) {
                     if (clientInfo.type !== 'SCREEN') {
@@ -110,6 +280,7 @@ function handleClientRegistration(ws, data) {
             ws.userID = uuidv4();
             connectedClients.set(ws, { type: clientType, userID: ws.userID });
             sendMessage(ws, { type: 'REGISTRATION_SUCCESS', message: `Successfully registered as ${clientType} client` });
+            sendMessage(ws, { type: 'CONFIG_UPDATE', message: appConfig });
             if (screenRegistered) {
                 sendMessage(getScreenClient(), { type: 'NEW_CLIENT', message: { type: clientType, userID: ws.userID } });
             }
@@ -195,7 +366,17 @@ async function handleShutdown(signal) {
     }
 }
 
-server.listen(port, () => { console.log(`HTTP/WebSocket servers listening on port ${port}`); });
+server.listen(port, () => {
+    const isHttps = !!(sslKeyPath && sslCertPath);
+    const scheme = isHttps ? 'https' : 'http';
+    console.log(`${scheme.toUpperCase()}/WebSocket servers listening on ${scheme}://localhost:${port}`);
+    if (isHttps) {
+        console.log(`Using SSL_KEY=${sslKeyPath}`);
+        console.log(`Using SSL_CERT=${sslCertPath}`);
+    } else {
+        console.log('Tip: set SSL_KEY and SSL_CERT env vars (or use `npm run dev:https`) to enable HTTPS.');
+    }
+});
 
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));

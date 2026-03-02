@@ -7,6 +7,7 @@ module.exports = {
         vr: './src/vr.js',
         desktop: './src/desktop.js',
         screen: './src/screen.js',
+        settings: './src/settings.js',
     },
     output: {
         filename: '[name].js',
