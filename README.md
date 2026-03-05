@@ -5,7 +5,9 @@
 - This strategy can be used to make interactive experiences combining XR experiences with viewable displays, helping bring isolated visualizations out into the real world.
 
 ## Resources
-- Check [WebXR First Steps](https://developers.meta.com/horizon/documentation/web/webxr-first-steps/) for a great beginner WebXR guide. 
+- [WebXR First Steps](https://developers.meta.com/horizon/documentation/web/webxr-first-steps/) - Meta's beginner WebXR guide
+- [WebXR Hands API](https://developers.meta.com/horizon/documentation/web/webxr-hands/) - Hand tracking documentation
+- [gamepad-wrapper](https://www.npmjs.com/package/gamepad-wrapper) - Controller input library used by this project 
 
 ## Game API (developing games in `src/games/`)
 ### Purpose
@@ -241,6 +243,71 @@ export const metadata = {
     ]
 };
 ```
+
+### Input Handling in VR
+
+This system uses two complementary input methods for VR:
+
+#### Controller Input (gamepad-wrapper)
+
+Controllers are accessed via `context.controllers` using [gamepad-wrapper](https://www.npmjs.com/package/gamepad-wrapper), which provides:
+
+- **Button detection**: `getButton(XR_BUTTONS.TRIGGER)` returns 0-1 pressure value
+- **Edge detection**: `getButtonDown()` fires once on press, `getButtonUp()` on release
+- **Axes**: `getAxis(XR_AXES.THUMBSTICK_X)` returns -1 to 1 for thumbsticks
+- **Hand gesture support**: Pinch gestures automatically trigger as `XR_BUTTONS.TRIGGER` events
+
+```javascript
+// Example: Check trigger press
+if (controllers.right.gamepad.getButtonDown(XR_BUTTONS.TRIGGER)) {
+    console.log('Trigger pressed!');
+}
+
+// Example: Check thumbstick
+const x = controllers.left.gamepad.getAxis(XR_AXES.THUMBSTICK_X);
+const y = controllers.left.gamepad.getAxis(XR_AXES.THUMBSTICK_Y);
+```
+
+**Key feature**: When hand tracking is enabled (controllers put down) on Quest, **pinch gestures automatically map to trigger button presses**. Your game doesn't need special code to support both controllers and basic hand gestures.
+
+#### Hand Tracking (WebXR Hands API)
+
+For advanced hand interactions beyond pinch, use `context.handState` from the [WebXR Hands API](https://developers.meta.com/horizon/documentation/web/webxr-hands/):
+
+- **25 joints per hand** with 3D positions and collision radii
+- Available when controllers are put down on Quest
+- Enables custom gestures, direct hand-object interaction, finger painting, etc.
+
+```javascript
+// Example: Check if hand tracking is active
+if (handState && handState.right.tracked) {
+    const indexTip = handState.right.joints['index-finger-tip'];
+    const thumbTip = handState.right.joints['thumb-tip'];
+    
+    // Calculate pinch distance for custom gesture
+    const distance = Math.sqrt(
+        Math.pow(indexTip.position[0] - thumbTip.position[0], 2) +
+        Math.pow(indexTip.position[1] - thumbTip.position[1], 2) +
+        Math.pow(indexTip.position[2] - thumbTip.position[2], 2)
+    );
+    
+    if (distance < 0.02) {
+        console.log('Custom pinch detected!');
+    }
+}
+```
+
+**Structure**: `handState` is `null` when unavailable, or contains:
+```javascript
+{
+    left: { tracked: boolean, joints: { 'joint-name': { position: [x,y,z], radius: number } } },
+    right: { tracked: boolean, joints: { 'joint-name': { position: [x,y,z], radius: number } } }
+}
+```
+
+**Common joint names**: `'wrist'`, `'thumb-tip'`, `'index-finger-tip'`, `'middle-finger-tip'`, `'ring-finger-tip'`, `'pinky-finger-tip'`, plus metacarpal and phalanx joints.
+
+**Best practice**: Use controller input for primary interactions (trigger to shoot, grip to grab). Add hand tracking for secondary features like gestures or direct hand manipulation. The system handles the transition seamlessly.
 
 ### Messaging Helpers
 - `sendGameMessage(payload)`

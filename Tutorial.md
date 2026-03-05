@@ -19,7 +19,7 @@ First, let's create the game file with metadata for settings.
 
 ### 1.1 Create tutorialGame.js
 
-Create a new file `src/games/tutorialGame.js` with the basic structure:
+Create a new file `src/games/tutorialGame.js` with the basic structure (delete the existing file if necessary):
 
 ```javascript
 import * as THREE from 'three';
