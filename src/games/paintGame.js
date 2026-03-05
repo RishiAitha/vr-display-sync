@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { XR_BUTTONS } from 'gamepad-wrapper';
 
 export const metadata = {
     id: 'paint',

@@ -1,12 +1,14 @@
 import ballsGame, { metadata as ballsMeta } from './ballsGame.js';
 import paintGame, { metadata as paintMeta } from './paintGame.js';
 import drawGame, { metadata as drawMeta } from './drawGame.js';
+import tutorialGame, { metadata as tutorialMeta } from './tutorialGame.js';
 
 // Central game registry
 export const GAMES = new Map([
     [ballsMeta.id, { game: ballsGame, metadata: ballsMeta }],
     [paintMeta.id, { game: paintGame, metadata: paintMeta }],
-    [drawMeta.id, { game: drawGame, metadata: drawMeta }]
+    [drawMeta.id, { game: drawGame, metadata: drawMeta }],
+    [tutorialMeta.id, { game: tutorialGame, metadata: tutorialMeta }]
 ]);
 
 // Default game to load on startup

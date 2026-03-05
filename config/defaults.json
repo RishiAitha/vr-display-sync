@@ -18,6 +18,11 @@
       "drawColorHex": "#111111",
       "drawThicknessPx": 20,
       "drawAlpha": 0.22
+    },
+    "tutorial": {
+      "sphereSpeed": 3.0,
+      "sphereColor": "#ffee66",
+      "targetCount": 5
     }
   }
 }

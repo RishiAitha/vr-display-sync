@@ -23,7 +23,7 @@ export const SYSTEM_SETTINGS_METADATA = [
         label: 'Active Game',
         type: 'select',
         default: 'balls',
-        options: ['balls', 'paint', 'draw'],
+        options: ['balls', 'paint', 'draw', 'tutorial'],
         tab: 'system',
         description: 'The current game to load'
     },
