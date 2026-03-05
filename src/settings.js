@@ -178,8 +178,12 @@ async function main() {
   const allSettings = getAllSettingsMetadata();
   const settingsByTab = groupSettingsByTab(allSettings);
   
-  // Create tabs
-  const tabNames = Object.keys(settingsByTab).sort();
+  // Create tabs (sort alphabetically, but keep 'system' tab last)
+  const tabNames = Object.keys(settingsByTab).sort((a, b) => {
+    if (a === 'system') return 1;  // system always goes to the end
+    if (b === 'system') return -1; // system always goes to the end
+    return a.localeCompare(b);     // alphabetical for everything else
+  });
   const tabsBar = el('div');
   tabsBar.style.display = 'flex';
   tabsBar.style.gap = '8px';

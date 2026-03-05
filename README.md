@@ -491,90 +491,47 @@ Open locally:
 
 ### Testing on Meta Quest Over LAN
 
-WebXR requires a **secure context** (HTTPS) when accessing from non-localhost origins. This means `http://192.168.x.x:3000` will not work on Quest.
+**For local development on your laptop, you DON'T need HTTPS.** Just run `npm run dev` and access `http://localhost:3000`.
 
-#### Recommended: mkcert (Trusted Certificate)
+**HTTPS is ONLY needed when testing on Quest over your local network.** WebXR requires a secure context (HTTPS) when accessing from non-localhost origins.
 
-Use [mkcert](https://github.com/FiloSottile/mkcert) to generate locally-trusted certificates. This avoids browser warnings.
+#### Setup HTTPS for Quest Testing
 
-**Windows (Chocolatey):**
-```powershell
-# Install mkcert
-choco install mkcert
-mkcert -install
+1. **Install mkcert** (creates locally-trusted certificates without browser warnings):
 
-# Generate cert for your LAN IP
-mkcert 192.168.1.100
+   **Windows:** `choco install mkcert` (requires [Chocolatey](https://chocolatey.org/install))  
+   **Mac:** `brew install mkcert`  
+   **Linux:** See [mkcert installation](https://github.com/FiloSottile/mkcert#installation)
 
-# Start server
-$env:SSL_KEY="./192.168.1.100-key.pem"; $env:SSL_CERT="./192.168.1.100.pem"; npm run dev
-```
+2. **Find your computer's IP address:**
+   - Windows: Run `ipconfig` and look for IPv4 Address (e.g., `192.168.1.100`)
+   - Mac/Linux: Run `ifconfig` and look for inet address
 
-**Mac (Homebrew):**
-```bash
-# Install mkcert
-brew install mkcert
-mkcert -install
+3. **Generate a certificate for your IP:**
+   ```bash
+   mkcert -install
+   mkcert YOUR_IP_HERE
+   ```
+   Example: `mkcert 192.168.1.100`
 
-# Generate cert for your LAN IP
-mkcert 192.168.1.100
+4. **Start the server with HTTPS:**
 
-# Start server (or use npm run dev:https)
-SSL_KEY=./192.168.1.100-key.pem SSL_CERT=./192.168.1.100.pem npm run dev
-```
+   **Windows:**
+   ```powershell
+   $env:SSL_KEY="./YOUR_IP_HERE-key.pem"; $env:SSL_CERT="./YOUR_IP_HERE.pem"; npm run dev
+   ```
 
-**Linux:**
-```bash
-# Install mkcert (see https://github.com/FiloSottile/mkcert#installation)
-mkcert -install
-mkcert 192.168.1.100
+   **Mac/Linux:**
+   ```bash
+   SSL_KEY=./YOUR_IP_HERE-key.pem SSL_CERT=./YOUR_IP_HERE.pem npm run dev
+   ```
 
-# Start server (or use npm run dev:https)
-SSL_KEY=./192.168.1.100-key.pem SSL_CERT=./192.168.1.100.pem npm run dev
-```
-
-**Replace `192.168.1.100` with your actual LAN IP** (find with `ipconfig` on Windows or `ifconfig` on Mac/Linux).
-
-Then access:
-- Quest: `https://192.168.1.100:3000/vr`
-- Screen: `https://192.168.1.100:3000/screen`
-
-#### Alternative: OpenSSL Self-Signed Certificate
-
-If you have OpenSSL installed (comes with Git for Windows on Windows, pre-installed on Mac/Linux):
-
-**Mac/Linux:**
-```bash
-mkdir .cert
-openssl req -x509 -newkey rsa:2048 -nodes \
-  -keyout .cert/key.pem \
-  -out .cert/cert.pem \
-  -days 365 \
-  -subj "/CN=192.168.1.100"
-
-# Use npm convenience script
-npm run dev:https
-```
-
-**Windows (if Git for Windows is installed):**
-```powershell
-mkdir .cert
-openssl req -x509 -newkey rsa:2048 -nodes `
-  -keyout .cert/key.pem `
-  -out .cert/cert.pem `
-  -days 365 `
-  -subj "/CN=192.168.1.100"
-
-$env:SSL_KEY=".cert/key.pem"; $env:SSL_CERT=".cert/cert.pem"; npm run dev
-```
-
-**Note:** Self-signed certificates show browser warnings. Click "Advanced" → "Proceed to site" to continue.
+5. **Access on Quest:** `https://YOUR_IP_HERE:3000/vr`
 
 #### Common Issues
 
-- **Only one Screen client allowed**: If you open `/screen` twice, the second will be rejected. Close other screen clients before opening a new one.
-- **Certificate errors on Quest**: If Quest refuses the self-signed cert even after proceeding, try using mkcert or an HTTPS tunnel service.
-- **Can't find your IP**: Run `ipconfig` (Windows) or `ifconfig` (Mac/Linux) to find your local network IP.
+- **Only one Screen client allowed**: Close other `/screen` tabs before opening a new one.
+- **Can't connect from Quest**: Make sure your Quest and computer are on the same WiFi network.
 
 ## Credits
 - Made by and for the [GTXR](https://www.gtxr.club/) club.
