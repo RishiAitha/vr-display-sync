@@ -66,6 +66,10 @@ export const metadata = {
     ]
 };
 
+// NOTE: The 'default' values in metadata should match the values you set in config/defaults.json (step 3).
+// The metadata defaults are used for UI hints and documentation, while config/defaults.json provides
+// the actual initial values loaded by the server.
+
 // Export game object with lifecycle methods
 export default {
     // VR lifecycle methods
@@ -127,6 +131,8 @@ export const GAMES = new Map([
   }
 }
 ```
+
+**Important:** These values should match the `default` fields in your metadata (step 1). The server loads initial settings from this file on startup, while the metadata defaults serve as documentation and UI hints.
 
 **4. Add to game selector** in `src/defaultSettings.js`:
 
@@ -213,36 +219,116 @@ Settings are defined in your game's `metadata.settings` array. Each setting obje
 - **key** (required): Setting identifier used in code (`context.settings.myKey`)
 - **label** (required): Display name in settings UI
 - **type** (required): Input type - `'boolean'`, `'number'`, `'color'`, `'select'`, or `'text'`
-- **default** (required): Default value
+- **default** (required): Default value matching the type
 - **tab** (recommended): Tab name in settings UI (typically your game's name)
-- **description** (optional): Tooltip/help text
-- **applyTo** (optional): `'vr'` or `'screen'` to limit where setting is used
-- **min** (for numbers): Minimum value
-- **max** (for numbers): Maximum value
-- **step** (for numbers): Increment step
-- **options** (for select): Array of option values or `[{label, value}]` objects
+- **description** (optional): Tooltip/help text displayed next to control
+- **applyTo** (optional): `'vr'` or `'screen'` to limit where setting is used (omit for both)
+- **min** (for numbers): Minimum allowed value
+- **max** (for numbers): Maximum allowed value
+- **step** (for numbers): Increment/decrement step size
+- **options** (for select): Array of option values `['option1', 'option2']` or objects `[{label: 'Label', value: 'val'}]`
 
-Example:
+#### Supported Input Types
+
+The settings UI automatically generates appropriate controls based on the `type` field:
+
+**Boolean (Toggle/Checkbox):**
 ```javascript
-export const metadata = {
-    id: 'mygame',
-    name: 'My Game',
-    description: 'A fun game',
-    settings: [
-        {
-            key: 'speed',
-            label: 'Speed',
-            type: 'number',
-            default: 1.0,
-            min: 0.1,
-            max: 5.0,
-            step: 0.1,
-            tab: 'mygame',
-            description: 'How fast things move'
-        }
-    ]
-};
+{
+    key: 'enableFeature',
+    label: 'Enable Feature',
+    type: 'boolean',
+    default: true,
+    tab: 'mygame',
+    description: 'Turns the feature on or off'
+}
 ```
+
+**Number (Number Input):**
+```javascript
+{
+    key: 'speed',
+    label: 'Speed',
+    type: 'number',
+    default: 1.0,
+    min: 0.1,
+    max: 5.0,
+    step: 0.1,
+    tab: 'mygame',
+    description: 'How fast things move'
+}
+```
+
+**Color (Color Picker):**
+```javascript
+{
+    key: 'primaryColor',
+    label: 'Primary Color',
+    type: 'color',
+    default: '#ff0000',
+    tab: 'mygame',
+    description: 'Main color for objects'
+}
+```
+
+**Select (Dropdown Menu):**
+```javascript
+{
+    key: 'difficulty',
+    label: 'Difficulty',
+    type: 'select',
+    default: 'medium',
+    options: ['easy', 'medium', 'hard'],
+    tab: 'mygame',
+    description: 'Game difficulty level'
+}
+// Or with custom labels:
+{
+    key: 'mode',
+    label: 'Mode',
+    type: 'select',
+    default: 'classic',
+    options: [
+        { label: 'Classic Mode', value: 'classic' },
+        { label: 'Speed Run', value: 'speed' },
+        { label: 'Zen Mode', value: 'zen' }
+    ],
+    tab: 'mygame'
+}
+```
+
+**Text (Text Input):**
+```javascript
+{
+    key: 'playerName',
+    label: 'Player Name',
+    type: 'text',
+    default: 'Player 1',
+    tab: 'mygame',
+    description: 'Your display name'
+}
+```
+
+#### How Settings Work
+
+The settings system has three layers:
+
+1. **`config/defaults.json`** - Shipped default values for all settings
+2. **`.server-config.json`** - Runtime persisted values (auto-created, gitignored)
+3. **Live config** - Current active configuration broadcast to all clients
+
+When the server starts:
+- Loads defaults from `config/defaults.json`
+- Merges with persisted values from `.server-config.json` (if exists)
+- Broadcasts initial config to all connected clients
+
+When settings change via `/settings` page:
+- Server updates live config
+- Saves to `.server-config.json` for persistence
+- Broadcasts `CONFIG_UPDATE` message to all clients
+- Clients receive settings via `context.settings`
+
+**Note:** `.server-config.json` is gitignored - it stores per-installation runtime state. Always define defaults in `config/defaults.json`.
 
 ### Input Handling in VR
 

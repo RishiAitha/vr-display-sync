@@ -15,13 +15,15 @@ const sslCertPath = process.env.SSL_CERT;
 const defaultsPath = path.join(__dirname, 'config', 'defaults.json');
 const defaults = JSON.parse(fs.readFileSync(defaultsPath, 'utf8'));
 
-// Initialize appConfig with system defaults + all game settings
+// Initialize appConfig with system defaults + all game defaults dynamically
 const appConfig = {
-    ...defaults.systemDefaults,
-    ...defaults.gameDefaults.balls,
-    ...defaults.gameDefaults.paint,
-    ...defaults.gameDefaults.draw,
+    ...defaults.systemDefaults
 };
+
+// Merge all game defaults from config file
+for (const gameId in defaults.gameDefaults) {
+    Object.assign(appConfig, defaults.gameDefaults[gameId]);
+}
 
 const persistedConfigPath = path.join(__dirname, '.server-config.json');
 

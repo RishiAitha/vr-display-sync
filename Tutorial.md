@@ -164,6 +164,8 @@ Add to `config/defaults.json`:
 }
 ```
 
+**Note:** These values should match the `default` fields in your metadata from step 1.1. The server loads these as the initial settings, while the metadata defaults are used for documentation and UI generation.
+
 ### 1.4 Add to Game Selector
 
 In `src/defaultSettings.js`, update the options array:
