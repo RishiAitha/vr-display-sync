@@ -35,8 +35,14 @@ targetCanvas.style.backgroundColor = 'white';
 document.body.appendChild(targetCanvas);
 
 function resizeCanvasToWindow() {
-    targetCanvas.width = window.innerWidth;
-    targetCanvas.height = window.innerHeight;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    
+    // Only update if dimensions changed
+    if (targetCanvas.width !== width || targetCanvas.height !== height) {
+        targetCanvas.width = width;
+        targetCanvas.height = height;
+    }
 }
 
 function sendScreenCalibration() {
@@ -108,6 +114,10 @@ let __lastScreenTime = performance.now();
 function __screenTick(t) {
     const delta = (t - __lastScreenTime) / 1000;
     __lastScreenTime = t;
+    
+    // Automatically handle canvas resizing
+    resizeCanvasToWindow();
+    
     try { gameAPI.updateScreen(delta, t / 1000, { canvas: targetCanvas, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { /* ignore */ }
     requestAnimationFrame(__screenTick);
 }

@@ -207,17 +207,15 @@ export default {
         this._screen = {
             canvas: canvas,
             ctx: canvas.getContext('2d'),
-            width: 0,
-            height: 0,
-            targetRadius: 0,
+            width: canvas.width,
+            height: canvas.height,
+            targetRadius: Math.min(canvas.width, canvas.height) * TARGET_RADIUS_PERCENT,
             targets: [],
             scores: {},
             shotVisuals: [],
             sendMessage: sendGameMessage,
             targetImage: new Image()
         };
-        
-        this.resizeCanvas();
         
         // Create targets based on settings
         for (let i = 0; i < settings.targetCount; i++) {
@@ -236,22 +234,6 @@ export default {
         this._screen.targetImage.src = 'assets/target.png';
         
         console.log('Tutorial game screen started with', settings.targetCount, 'targets');
-    },
-
-    resizeCanvas() {
-        const canvas = this._screen.canvas;
-        const width = canvas.clientWidth;
-        const height = canvas.clientHeight;
-        
-        // Only resize if dimensions changed
-        if (canvas.width !== width || canvas.height !== height) {
-            canvas.width = width;
-            canvas.height = height;
-            
-            this._screen.width = width;
-            this._screen.height = height;
-            this._screen.targetRadius = Math.min(width, height) * TARGET_RADIUS_PERCENT;
-        }
     },
 
     createTarget() {
@@ -296,7 +278,11 @@ export default {
     updateScreen(delta, time, context) {
         if (!this._screen) return;
         
-        this.resizeCanvas();
+        // Update cached dimensions (canvas auto-resized by framework)
+        const canvas = this._screen.canvas;
+        this._screen.width = canvas.width;
+        this._screen.height = canvas.height;
+        this._screen.targetRadius = Math.min(canvas.width, canvas.height) * TARGET_RADIUS_PERCENT;
         
         const ctx = this._screen.ctx;
         const { width, height } = this._screen;

@@ -201,10 +201,12 @@ That's it! Your game will automatically:
 
 - `startScreen(context)`
 	- Called once on the Screen client. `context` contains `{ canvas, sendGameMessage, settings }` and should be used to set up drawing and event handlers
+	- **Note:** Canvas is automatically resized by the framework to match the window viewport - no manual resizing needed. Aspect ratio changes also update the VR screenRect automatically.
 
 - `updateScreen(delta, time, context)`
 	- Runs every frame for screen canvas updates
     - Useful for animation, events, gameplay changes, and anything else happening on the screen canvas
+    - **Note:** Canvas is automatically resized before this is called - just use `canvas.width` and `canvas.height` directly
     - Note: Screen client does NOT have access to VR controller data in context - use GAME_EVENT messages via sendGameMessage to communicate from VR to screen
     - `context` contains `{ canvas, sendGameMessage, settings }`
 
@@ -491,10 +493,57 @@ Open locally:
 
 WebXR requires a **secure context** (HTTPS) when accessing from non-localhost origins. This means `http://192.168.x.x:3000` will not work on Quest.
 
-#### Option 1: Self-Signed Certificate (Quick but shows browser warning)
+#### Recommended: mkcert (Trusted Certificate)
 
-1. Generate a self-signed certificate:
+Use [mkcert](https://github.com/FiloSottile/mkcert) to generate locally-trusted certificates. This avoids browser warnings.
 
+**Windows (Chocolatey):**
+```powershell
+# Install mkcert
+choco install mkcert
+mkcert -install
+
+# Generate cert for your LAN IP
+mkcert 192.168.1.100
+
+# Start server
+$env:SSL_KEY="./192.168.1.100-key.pem"; $env:SSL_CERT="./192.168.1.100.pem"; npm run dev
+```
+
+**Mac (Homebrew):**
+```bash
+# Install mkcert
+brew install mkcert
+mkcert -install
+
+# Generate cert for your LAN IP
+mkcert 192.168.1.100
+
+# Start server (or use npm run dev:https)
+SSL_KEY=./192.168.1.100-key.pem SSL_CERT=./192.168.1.100.pem npm run dev
+```
+
+**Linux:**
+```bash
+# Install mkcert (see https://github.com/FiloSottile/mkcert#installation)
+mkcert -install
+mkcert 192.168.1.100
+
+# Start server (or use npm run dev:https)
+SSL_KEY=./192.168.1.100-key.pem SSL_CERT=./192.168.1.100.pem npm run dev
+```
+
+**Replace `192.168.1.100` with your actual LAN IP** (find with `ipconfig` on Windows or `ifconfig` on Mac/Linux).
+
+Then access:
+- Quest: `https://192.168.1.100:3000/vr`
+- Screen: `https://192.168.1.100:3000/screen`
+
+#### Alternative: OpenSSL Self-Signed Certificate
+
+If you have OpenSSL installed (comes with Git for Windows on Windows, pre-installed on Mac/Linux):
+
+**Mac/Linux:**
 ```bash
 mkdir .cert
 openssl req -x509 -newkey rsa:2048 -nodes \
@@ -502,44 +551,24 @@ openssl req -x509 -newkey rsa:2048 -nodes \
   -out .cert/cert.pem \
   -days 365 \
   -subj "/CN=192.168.1.100"
-```
 
-Replace `192.168.1.100` with your computer's actual LAN IP address.
-
-2. Start the server with HTTPS:
-
-```bash
-SSL_KEY=.cert/key.pem SSL_CERT=.cert/cert.pem npm run dev
-```
-
-Or use the convenience command:
-
-```bash
+# Use npm convenience script
 npm run dev:https
 ```
 
-3. On your Quest browser, navigate to:
-   - `https://192.168.1.100:3000/vr` (VR client)
-   
-4. On your laptop/display:
-   - `https://192.168.1.100:3000/screen` (Screen client)
+**Windows (if Git for Windows is installed):**
+```powershell
+mkdir .cert
+openssl req -x509 -newkey rsa:2048 -nodes `
+  -keyout .cert/key.pem `
+  -out .cert/cert.pem `
+  -days 365 `
+  -subj "/CN=192.168.1.100"
 
-**Note:** You'll see a certificate warning in the browser. Click "Advanced" → "Proceed to site" to continue.
-
-#### Option 2: Trusted Local Certificate (Recommended)
-
-Use [mkcert](https://github.com/FiloSottile/mkcert) to generate locally-trusted certificates:
-
-```bash
-# Install mkcert (see mkcert docs for your OS)
-mkcert -install
-mkcert 192.168.1.100
-
-# Start server with the generated cert
-SSL_KEY=./192.168.1.100-key.pem SSL_CERT=./192.168.1.100.pem npm run dev
+$env:SSL_KEY=".cert/key.pem"; $env:SSL_CERT=".cert/cert.pem"; npm run dev
 ```
 
-This avoids browser warnings but requires mkcert installation on your development machine.
+**Note:** Self-signed certificates show browser warnings. Click "Advanced" → "Proceed to site" to continue.
 
 #### Common Issues
 
