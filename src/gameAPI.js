@@ -1,32 +1,46 @@
 import * as cm from './clientManager.js';
+import { GAMES } from './games/index.js';
 
 // Game glue: register multiple games and switch between them at runtime.
 const games = new Map();
 let activeGameId = null;
 let currentGame = null;
+let currentSettings = {}; // Current settings object passed to games
 
-export function registerGame(id, game) {
-    if (!id) return;
-    games.set(String(id), game || null);
-    if (!activeGameId) {
-        setActiveGame(String(id));
-    }
-}
-
-export function registerGames(entries) {
-    if (!entries) return;
-    for (const [id, game] of Object.entries(entries)) {
-        registerGame(id, game);
-    }
+// Initialize games from registry
+for (const [id, { game }] of GAMES) {
+    games.set(id, game);
 }
 
 export function getActiveGameId() {
     return activeGameId;
 }
 
-export function setActiveGame(id, { vrContext = null, screenContext = null } = {}) {
+/**
+ * Update the current settings object
+ * @param {Object} newSettings - New settings to merge
+ */
+export function updateSettings(newSettings) {
+    if (!newSettings) return;
+    currentSettings = { ...currentSettings, ...newSettings };
+}
+
+/**
+ * Get the current settings object
+ * @returns {Object} Current settings
+ */
+export function getCurrentSettings() {
+    return { ...currentSettings };
+}
+
+export function setActiveGame(id, { vrContext = null, screenContext = null, settings = null } = {}) {
     const nextId = String(id);
     if (activeGameId === nextId && currentGame) return;
+
+    // Update settings if provided
+    if (settings) {
+        updateSettings(settings);
+    }
 
     const prev = currentGame;
     if (prev) {
@@ -54,49 +68,42 @@ export function onMessage(message) {
 
 export async function startVR(ctx) {
     if (currentGame && typeof currentGame.startVR === 'function') {
-        try { await currentGame.startVR(ctx); } catch (e) { console.error('game startVR error', e); }
+        const contextWithSettings = { ...ctx, settings: currentSettings };
+        try { await currentGame.startVR(contextWithSettings); } catch (e) { console.error('game startVR error', e); }
     }
 }
 
 export function updateVR(delta, time, ctx) {
     if (currentGame && typeof currentGame.updateVR === 'function') {
-        try { currentGame.updateVR(delta, time, ctx); } catch (e) { console.error('game updateVR error', e); }
+        const contextWithSettings = { ...ctx, settings: currentSettings };
+        try { currentGame.updateVR(delta, time, contextWithSettings); } catch (e) { console.error('game updateVR error', e); }
     }
 }
 
 export async function startScreen(ctx) {
     if (currentGame && typeof currentGame.startScreen === 'function') {
-        try { await currentGame.startScreen(ctx); } catch (e) { console.error('game startScreen error', e); }
+        const contextWithSettings = { ...ctx, settings: currentSettings };
+        try { await currentGame.startScreen(contextWithSettings); } catch (e) { console.error('game startScreen error', e); }
     }
 }
 
 export function updateScreen(delta, time, ctx) {
     if (currentGame && typeof currentGame.updateScreen === 'function') {
-        try { currentGame.updateScreen(delta, time, ctx); } catch (e) { console.error('game updateScreen error', e); }
+        const contextWithSettings = { ...ctx, settings: currentSettings };
+        try { currentGame.updateScreen(delta, time, contextWithSettings); } catch (e) { console.error('game updateScreen error', e); }
     }
 }
 
-// Forward incoming GAME_EVENT messages from the network to this API
+// Forward incoming GAME_EVENT messages from the network to the current game
 cm.handleEvent('GAME_EVENT', (msg) => {
-    onMessage(msg);
-});
-
-// Auto-load a default no-op game if none is registered to avoid checks elsewhere
-registerGame('noop', {
-    startVR: async () => {},
-    updateVR: () => {},
-    startScreen: async () => {},
-    updateScreen: () => {},
-    onMessage: () => {},
-    disposeVR: () => {},
-    disposeScreen: () => {}
+    if (msg) onMessage(msg);
 });
 
 export default {
-    registerGame,
-    registerGames,
     setActiveGame,
     getActiveGameId,
+    updateSettings,
+    getCurrentSettings,
     sendGameMessage,
     onMessage,
     startVR,

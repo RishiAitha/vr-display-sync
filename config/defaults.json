@@ -1,0 +1,23 @@
+{
+  "systemDefaults": {
+    "activeGameId": "balls",
+    "screenGeometryMode": "flat",
+    "handJointsDebugEnabled": false
+  },
+  "gameDefaults": {
+    "balls": {
+      "displayOverlayEnabled": true,
+      "gravityMultiplier": 1.0,
+      "swipeForceMultiplier": 1.0,
+      "handTouchRadiusMeters": 0.06,
+      "handMinSwipeSpeedMetersPerSec": 0.25,
+      "handSwipeBallCooldownSec": 0.10
+    },
+    "paint": {},
+    "draw": {
+      "drawColorHex": "#111111",
+      "drawThicknessPx": 20,
+      "drawAlpha": 0.22
+    }
+  }
+}

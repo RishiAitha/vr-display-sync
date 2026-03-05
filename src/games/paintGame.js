@@ -1,7 +1,18 @@
 import * as THREE from 'three';
 
+export const metadata = {
+    id: 'paint',
+    name: 'Paint',
+    description: 'Simple controller-ray painting with two colors',
+    settings: [
+        // No custom settings currently - uses hardcoded values for simplicity
+    ]
+};
+
 export default {
     async startVR(context) {
+        this.settings = context.settings || {};
+        
         this._vr = {
             root: null,
             hasScene: !!(context && context.scene)
@@ -35,6 +46,8 @@ export default {
     },
 
     async startScreen(context) {
+        this.settings = context.settings || {};
+        
         this._screen = {
             lastSize: { w: 0, h: 0 },
             strokes: [],

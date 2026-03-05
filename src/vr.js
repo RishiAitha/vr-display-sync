@@ -5,19 +5,11 @@ import { XR_BUTTONS, XR_AXES } from 'gamepad-wrapper';
 import { Text } from 'troika-three-text';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as gameAPI from './gameAPI.js';
-import game from './game.js';
-import paintGame from './paintGame.js';
-import drawGame from './drawGame.js';
-gameAPI.registerGames({ balls: game, paint: paintGame, draw: drawGame });
+import { DEFAULT_GAME_ID } from './games/index.js';
 
 let configScreenMode = 'curved';
-let configDisplayOverlayEnabled = true;
 let configHandJointsDebugEnabled = false;
-
-let configActiveGameId = 'balls';
-let configDrawColorHex = '#111111';
-let configDrawThicknessPx = 20;
-let configDrawAlpha = 0.22;
+let configActiveGameId = DEFAULT_GAME_ID;
 let lastGameVRContext = null;
 
 function getActiveScreenMode() {
@@ -43,19 +35,30 @@ if (navigator.xr) {
     navigator.xr.isSessionSupported('immersive-ar').then(supported => {
         if (!supported) window.location.href = '/desktop';
     });
+} else {
+    window.location.href = '/desktop';
+}
 
 cm.handleEvent('CONFIG_UPDATE', (message) => {
-    if (message && typeof message.activeGameId === 'string') {
+    if (!message) return;
+
+    // Update all settings in gameAPI
+    gameAPI.updateSettings(message);
+
+    // Handle active game change
+    if (typeof message.activeGameId === 'string') {
         const nextId = message.activeGameId;
         if (nextId && nextId !== configActiveGameId) {
             configActiveGameId = nextId;
-            gameAPI.setActiveGame(nextId, { vrContext: lastGameVRContext });
+            gameAPI.setActiveGame(nextId, { vrContext: lastGameVRContext, settings: gameAPI.getCurrentSettings() });
             if (gameStartedVR && lastGameVRContext) {
                 try { void gameAPI.startVR(lastGameVRContext); } catch (e) { console.error('game startVR error', e); }
             }
         }
     }
-    if (message && typeof message.screenGeometryMode === 'string') {
+
+    // Handle screen geometry mode change
+    if (typeof message.screenGeometryMode === 'string') {
         const next = String(message.screenGeometryMode).toLowerCase();
         if (next === 'flat' || next === 'curved') {
             const prev = configScreenMode;
@@ -71,37 +74,11 @@ cm.handleEvent('CONFIG_UPDATE', (message) => {
         }
     }
 
-    if (message && typeof message.displayOverlayEnabled === 'boolean') {
-        configDisplayOverlayEnabled = message.displayOverlayEnabled;
-    }
-
-    if (message && typeof message.handJointsDebugEnabled === 'boolean') {
+    // Handle hand joints debug setting
+    if (typeof message.handJointsDebugEnabled === 'boolean') {
         configHandJointsDebugEnabled = message.handJointsDebugEnabled;
     }
-
-    if (message && typeof message.handTouchRadiusMeters === 'number' && Number.isFinite(message.handTouchRadiusMeters)) {
-        game.touchRadiusMeters = message.handTouchRadiusMeters;
-    }
-    if (message && typeof message.handMinSwipeSpeedMetersPerSec === 'number' && Number.isFinite(message.handMinSwipeSpeedMetersPerSec)) {
-        game.minSwipeSpeedMetersPerSec = message.handMinSwipeSpeedMetersPerSec;
-    }
-    if (message && typeof message.handSwipeBallCooldownSec === 'number' && Number.isFinite(message.handSwipeBallCooldownSec)) {
-        game.handSwipeBallCooldownSec = message.handSwipeBallCooldownSec;
-    }
-
-    if (message && typeof message.drawColorHex === 'string') {
-        configDrawColorHex = message.drawColorHex;
-    }
-    if (message && typeof message.drawThicknessPx === 'number' && Number.isFinite(message.drawThicknessPx)) {
-        configDrawThicknessPx = message.drawThicknessPx;
-    }
-    if (message && typeof message.drawAlpha === 'number' && Number.isFinite(message.drawAlpha)) {
-        configDrawAlpha = message.drawAlpha;
-    }
 });
-} else {
-    window.location.href = '/desktop';
-}
 
 // ---------- Scene & state ----------
 let floor;
@@ -416,7 +393,8 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
     // Hide the screenRect visualization when overlay is disabled (but keep it raycastable).
     // Always show it during calibration.
     {
-        const overlayOn = !!configDisplayOverlayEnabled;
+        const settings = gameAPI.getCurrentSettings();
+        const overlayOn = !!(settings.displayOverlayEnabled !== undefined ? settings.displayOverlayEnabled : true);
         const shouldShowGhost = !calibrated || overlayOn;
         if (screenRect && lastScreenRectOverlayEnabled !== shouldShowGhost) {
             setScreenRectOpacity(shouldShowGhost ? 0.2 : 0.0);
@@ -537,7 +515,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
     // Drive game updates when started, provide screenState + screenMeta in the context
     if (gameStartedVR) {
         try {
-            const ctx = { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage, screenState: latestScreenState, screenMeta: latestScreenMeta, screenRect, displayOverlayEnabled: configDisplayOverlayEnabled, handState, drawColorHex: configDrawColorHex, drawThicknessPx: configDrawThicknessPx, drawAlpha: configDrawAlpha };
+            const ctx = { scene, camera, renderer, player, controllers, sendGameMessage: gameAPI.sendGameMessage, screenState: latestScreenState, screenMeta: latestScreenMeta, screenRect, handState };
             lastGameVRContext = ctx;
             gameAPI.updateVR(delta, time, ctx);
         } catch (e) {

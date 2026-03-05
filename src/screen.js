@@ -1,14 +1,14 @@
 import * as cm from './clientManager.js';
 import * as gameAPI from './gameAPI.js';
-import game from './game.js';
-import paintGame from './paintGame.js';
-import drawGame from './drawGame.js';
-gameAPI.registerGames({ balls: game, paint: paintGame, draw: drawGame });
+import { DEFAULT_GAME_ID } from './games/index.js';
 
 document.body.style.margin = '0';
 document.body.style.padding = '0';
 document.body.style.overflow = 'hidden';
 document.documentElement.style.overflow = 'hidden';
+
+let configActiveGameId = DEFAULT_GAME_ID;
+let lastGameScreenContext = null;
 
 cm.registerToServer('SCREEN')
     .then(() => {
@@ -17,7 +17,7 @@ cm.registerToServer('SCREEN')
         try {
             const startCtx = { canvas: targetCanvas, sendGameMessage: gameAPI.sendGameMessage, committedCalibration };
             lastGameScreenContext = startCtx;
-            gameAPI.setActiveGame(configActiveGameId, { screenContext: lastGameScreenContext });
+            gameAPI.setActiveGame(configActiveGameId, { screenContext: lastGameScreenContext, settings: gameAPI.getCurrentSettings() });
             gameAPI.startScreen(startCtx);
         } catch (e) {
             console.error('gameAPI startScreen error', e);
@@ -64,9 +64,6 @@ targetImage.src = '/assets/target.png';
 
 let committedCalibration = null;
 
-let configActiveGameId = 'balls';
-let lastGameScreenContext = null;
-
 function handleNewClient(message) {
     const { type, userID } = message;
     if (type === 'VR') {
@@ -83,25 +80,24 @@ function handleClientDisconnect(message) {
 cm.handleEvent('NEW_CLIENT', handleNewClient);
 cm.handleEvent('CLIENT_DISCONNECTED', handleClientDisconnect);
 cm.handleEvent('CONFIG_UPDATE', (message) => {
-    if (message && typeof message.activeGameId === 'string') {
+    if (!message) return;
+
+    // Update all settings in gameAPI
+    gameAPI.updateSettings(message);
+
+    // Handle active game change
+    if (typeof message.activeGameId === 'string') {
         const nextId = message.activeGameId;
         if (nextId && nextId !== configActiveGameId) {
             configActiveGameId = nextId;
-            gameAPI.setActiveGame(nextId, { screenContext: lastGameScreenContext });
+            gameAPI.setActiveGame(nextId, { screenContext: lastGameScreenContext, settings: gameAPI.getCurrentSettings() });
             if (lastGameScreenContext) {
                 try { void gameAPI.startScreen(lastGameScreenContext); } catch (e) { console.error('gameAPI startScreen error', e); }
             }
         }
     }
-    if (message && typeof message.swipeForceMultiplier === 'number' && Number.isFinite(message.swipeForceMultiplier)) {
-        game.swipeForceMultiplier = message.swipeForceMultiplier;
-    }
-    if (message && typeof message.gravityMultiplier === 'number' && Number.isFinite(message.gravityMultiplier)) {
-        game.gravityMultiplier = message.gravityMultiplier;
-    } else if (message && typeof message.gravityPixelsPerSec2 === 'number' && Number.isFinite(message.gravityPixelsPerSec2)) {
-        game.gravityMultiplier = message.gravityPixelsPerSec2 / 980;
-    }
 });
+
 cm.handleEvent('CALIBRATION_COMMIT', (message) => {
     console.log('Screen received CALIBRATION_COMMIT (ignored overlay):', message);
     committedCalibration = message;

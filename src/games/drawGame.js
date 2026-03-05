@@ -55,8 +55,50 @@ function hexToInt(hex) {
     return Number.isFinite(v) ? v : null;
 }
 
+export const metadata = {
+    id: 'draw',
+    name: 'Draw',
+    description: 'Draw on screen with pinch gesture or controller trigger',
+    settings: [
+        {
+            key: 'drawColorHex',
+            label: 'Color',
+            type: 'color',
+            default: '#111111',
+            tab: 'draw',
+            applyTo: 'vr',
+            description: 'Drawing color (hex)'
+        },
+        {
+            key: 'drawThicknessPx',
+            label: 'Thickness (px)',
+            type: 'number',
+            default: 20,
+            min: 1,
+            step: 1,
+            tab: 'draw',
+            applyTo: 'vr',
+            description: 'Drawing stroke thickness in pixels'
+        },
+        {
+            key: 'drawAlpha',
+            label: 'Alpha (0-1)',
+            type: 'number',
+            default: 0.22,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            tab: 'draw',
+            applyTo: 'vr',
+            description: 'Drawing stroke opacity'
+        }
+    ]
+};
+
 export default {
-    async startVR(_context) {
+    async startVR(context) {
+        this.settings = context.settings || {};
+        
         this._vr = {
             pinching: { left: false, right: false }
         };
@@ -65,13 +107,22 @@ export default {
     updateVR(_delta, _time, context) {
         if (!context || !context.handState || !context.screenRect || !context.screenMeta) return;
 
-        const thicknessPx = (typeof context.drawThicknessPx === 'number' && Number.isFinite(context.drawThicknessPx))
-            ? context.drawThicknessPx
+        // Update settings from context if provided
+        if (context && context.settings) {
+            this.settings = context.settings;
+        }
+
+        const thicknessPx = this.settings.drawThicknessPx !== undefined
+            ? this.settings.drawThicknessPx
             : 20;
-        const colorInt = hexToInt(context.drawColorHex);
-        const alpha = (typeof context.drawAlpha === 'number' && Number.isFinite(context.drawAlpha))
-            ? context.drawAlpha
+        const colorHex = this.settings.drawColorHex !== undefined
+            ? this.settings.drawColorHex
+            : '#111111';
+        const alpha = this.settings.drawAlpha !== undefined
+            ? this.settings.drawAlpha
             : 0.22;
+        
+        const colorInt = hexToInt(colorHex);
 
         const { handState, screenRect, screenMeta, camera } = context;
         const screenWidth = screenMeta.screenWidth;
@@ -175,6 +226,8 @@ export default {
     },
 
     async startScreen(context) {
+        this.settings = context.settings || {};
+        
         this._screen = {
             strokes: [],
         };

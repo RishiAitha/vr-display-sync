@@ -11,19 +11,16 @@ const port = process.env.PORT || 3000;
 const sslKeyPath = process.env.SSL_KEY;
 const sslCertPath = process.env.SSL_CERT;
 
+// Load default settings from shared config
+const defaultsPath = path.join(__dirname, 'config', 'defaults.json');
+const defaults = JSON.parse(fs.readFileSync(defaultsPath, 'utf8'));
+
+// Initialize appConfig with system defaults + all game settings
 const appConfig = {
-    activeGameId: 'balls',
-    screenGeometryMode: 'curved',
-    displayOverlayEnabled: true,
-    gravityMultiplier: 1.0,
-    swipeForceMultiplier: 1.0,
-    handJointsDebugEnabled: false,
-    handTouchRadiusMeters: 0.06,
-    handMinSwipeSpeedMetersPerSec: 0.25,
-    handSwipeBallCooldownSec: 0.10,
-    drawColorHex: '#111111',
-    drawThicknessPx: 20,
-    drawAlpha: 0.22,
+    ...defaults.systemDefaults,
+    ...defaults.gameDefaults.balls,
+    ...defaults.gameDefaults.paint,
+    ...defaults.gameDefaults.draw,
 };
 
 const persistedConfigPath = path.join(__dirname, '.server-config.json');
@@ -31,44 +28,28 @@ const persistedConfigPath = path.join(__dirname, '.server-config.json');
 function applyPersistedConfig(raw) {
     if (!raw || typeof raw !== 'object') return;
 
-    if (typeof raw.activeGameId === 'string') {
-        appConfig.activeGameId = raw.activeGameId;
-    }
-
-    if (typeof raw.screenGeometryMode === 'string') {
-        const mode = String(raw.screenGeometryMode).toLowerCase();
-        if (mode === 'flat' || mode === 'curved') appConfig.screenGeometryMode = mode;
-    }
-    if (typeof raw.displayOverlayEnabled === 'boolean') {
-        appConfig.displayOverlayEnabled = raw.displayOverlayEnabled;
-    }
-    if (typeof raw.gravityMultiplier === 'number' && Number.isFinite(raw.gravityMultiplier)) {
-        appConfig.gravityMultiplier = raw.gravityMultiplier;
-    }
-    if (typeof raw.swipeForceMultiplier === 'number' && Number.isFinite(raw.swipeForceMultiplier)) {
-        appConfig.swipeForceMultiplier = raw.swipeForceMultiplier;
-    }
-    if (typeof raw.handJointsDebugEnabled === 'boolean') {
-        appConfig.handJointsDebugEnabled = raw.handJointsDebugEnabled;
-    }
-    if (typeof raw.handTouchRadiusMeters === 'number' && Number.isFinite(raw.handTouchRadiusMeters)) {
-        appConfig.handTouchRadiusMeters = raw.handTouchRadiusMeters;
-    }
-    if (typeof raw.handMinSwipeSpeedMetersPerSec === 'number' && Number.isFinite(raw.handMinSwipeSpeedMetersPerSec)) {
-        appConfig.handMinSwipeSpeedMetersPerSec = raw.handMinSwipeSpeedMetersPerSec;
-    }
-    if (typeof raw.handSwipeBallCooldownSec === 'number' && Number.isFinite(raw.handSwipeBallCooldownSec)) {
-        appConfig.handSwipeBallCooldownSec = raw.handSwipeBallCooldownSec;
-    }
-
-    if (typeof raw.drawColorHex === 'string') {
-        appConfig.drawColorHex = raw.drawColorHex;
-    }
-    if (typeof raw.drawThicknessPx === 'number' && Number.isFinite(raw.drawThicknessPx)) {
-        appConfig.drawThicknessPx = raw.drawThicknessPx;
-    }
-    if (typeof raw.drawAlpha === 'number' && Number.isFinite(raw.drawAlpha)) {
-        appConfig.drawAlpha = raw.drawAlpha;
+    // Apply any persisted setting that exists in our defaults
+    for (const key in raw) {
+        if (key in appConfig) {
+            const value = raw[key];
+            const currentValue = appConfig[key];
+            const valueType = typeof currentValue;
+            
+            // Type-check and apply the value
+            if (typeof value === valueType) {
+                // Additional validation for specific settings
+                if (key === 'screenGeometryMode') {
+                    const mode = String(value).toLowerCase();
+                    if (mode === 'flat' || mode === 'curved') {
+                        appConfig[key] = mode;
+                    }
+                } else if (valueType === 'number' && Number.isFinite(value)) {
+                    appConfig[key] = value;
+                } else {
+                    appConfig[key] = value;
+                }
+            }
+        }
     }
 }
 
@@ -133,61 +114,36 @@ app.post('/api/config', (req, res) => {
     const next = req.body || {};
     let changed = false;
 
-    if (typeof next.activeGameId === 'string') {
-        appConfig.activeGameId = next.activeGameId;
-        changed = true;
-    }
-    if (typeof next.screenGeometryMode === 'string') {
-        const mode = String(next.screenGeometryMode).toLowerCase();
-        if (mode === 'flat' || mode === 'curved') {
-            appConfig.screenGeometryMode = mode;
-            changed = true;
+    // Update any setting that exists in our config
+    for (const key in next) {
+        if (key in appConfig) {
+            const value = next[key];
+            const currentValue = appConfig[key];
+            const valueType = typeof currentValue;
+            
+            // Type-check and apply the value
+            if (typeof value === valueType) {
+                // Additional validation for specific settings
+                if (key === 'screenGeometryMode') {
+                    const mode = String(value).toLowerCase();
+                    if (mode === 'flat' || mode === 'curved') {
+                        appConfig[key] = mode;
+                        changed = true;
+                    }
+                } else if (valueType === 'number' && Number.isFinite(value)) {
+                    appConfig[key] = value;
+                    changed = true;
+                } else {
+                    appConfig[key] = value;
+                    changed = true;
+                }
+            }
         }
     }
-    if (typeof next.displayOverlayEnabled === 'boolean') {
-        appConfig.displayOverlayEnabled = next.displayOverlayEnabled;
-        changed = true;
-    }
-    if (typeof next.handJointsDebugEnabled === 'boolean') {
-        appConfig.handJointsDebugEnabled = next.handJointsDebugEnabled;
-        changed = true;
-    }
-    if (typeof next.handTouchRadiusMeters === 'number' && Number.isFinite(next.handTouchRadiusMeters)) {
-        appConfig.handTouchRadiusMeters = next.handTouchRadiusMeters;
-        changed = true;
-    }
-    if (typeof next.handMinSwipeSpeedMetersPerSec === 'number' && Number.isFinite(next.handMinSwipeSpeedMetersPerSec)) {
-        appConfig.handMinSwipeSpeedMetersPerSec = next.handMinSwipeSpeedMetersPerSec;
-        changed = true;
-    }
-    if (typeof next.handSwipeBallCooldownSec === 'number' && Number.isFinite(next.handSwipeBallCooldownSec)) {
-        appConfig.handSwipeBallCooldownSec = next.handSwipeBallCooldownSec;
-        changed = true;
-    }
-    if (typeof next.swipeForceMultiplier === 'number' && Number.isFinite(next.swipeForceMultiplier)) {
-        appConfig.swipeForceMultiplier = next.swipeForceMultiplier;
-        changed = true;
-    }
-    if (typeof next.gravityMultiplier === 'number' && Number.isFinite(next.gravityMultiplier)) {
-        appConfig.gravityMultiplier = next.gravityMultiplier;
-        changed = true;
-    }
+    
     // Legacy compatibility: allow setting absolute gravity and convert it to a multiplier.
     if (typeof next.gravityPixelsPerSec2 === 'number' && Number.isFinite(next.gravityPixelsPerSec2)) {
         appConfig.gravityMultiplier = next.gravityPixelsPerSec2 / 980;
-        changed = true;
-    }
-
-    if (typeof next.drawColorHex === 'string') {
-        appConfig.drawColorHex = next.drawColorHex;
-        changed = true;
-    }
-    if (typeof next.drawThicknessPx === 'number' && Number.isFinite(next.drawThicknessPx)) {
-        appConfig.drawThicknessPx = next.drawThicknessPx;
-        changed = true;
-    }
-    if (typeof next.drawAlpha === 'number' && Number.isFinite(next.drawAlpha)) {
-        appConfig.drawAlpha = next.drawAlpha;
         changed = true;
     }
 

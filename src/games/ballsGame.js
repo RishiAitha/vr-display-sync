@@ -1,27 +1,88 @@
 import * as THREE from 'three';
 
+export const metadata = {
+    id: 'balls',
+    name: 'Balls',
+    description: 'Multi-ball physics simulation with hand swipe and controller interaction',
+    settings: [
+        {
+            key: 'displayOverlayEnabled',
+            label: 'Display Overlay',
+            type: 'boolean',
+            default: true,
+            tab: 'balls',
+            applyTo: 'vr',
+            description: 'Show ball markers and crosshair in VR'
+        },
+        {
+            key: 'gravityMultiplier',
+            label: 'Gravity Multiplier',
+            type: 'number',
+            default: 1.0,
+            min: 0,
+            step: 0.1,
+            tab: 'balls',
+            applyTo: 'screen',
+            description: 'Multiplier for gravity (1.0 = Earth gravity)'
+        },
+        {
+            key: 'swipeForceMultiplier',
+            label: 'Swipe Force Multiplier',
+            type: 'number',
+            default: 1.0,
+            min: 0,
+            step: 0.1,
+            tab: 'balls',
+            applyTo: 'screen',
+            description: 'Multiplier for swipe impulse force'
+        },
+        {
+            key: 'handTouchRadiusMeters',
+            label: 'Hand Touch Radius (m)',
+            type: 'number',
+            default: 0.06,
+            min: 0,
+            step: 0.005,
+            tab: 'balls',
+            applyTo: 'vr',
+            description: 'Touch detection radius for hand joints'
+        },
+        {
+            key: 'handMinSwipeSpeedMetersPerSec',
+            label: 'Hand Min Swipe Speed (m/s)',
+            type: 'number',
+            default: 0.25,
+            min: 0,
+            step: 0.05,
+            tab: 'balls',
+            applyTo: 'vr',
+            description: 'Minimum velocity threshold for hand swipe'
+        },
+        {
+            key: 'handSwipeBallCooldownSec',
+            label: 'Hand Cooldown (s)',
+            type: 'number',
+            default: 0.10,
+            min: 0,
+            step: 0.01,
+            tab: 'balls',
+            applyTo: 'vr',
+            description: 'Cooldown between successive impulses per ball'
+        }
+    ]
+};
+
 export default {
     // Instance variables here
-
-    // --- Action-at-a-distance swipe tuning ---
-    touchRadiusMeters: 0.06,
-    minSwipeSpeedMetersPerSec: 0.25,
-    handSwipeBallCooldownSec: 0.10,
     impulseMultiplierX: 500,
     impulseMultiplierY: 700,
 
-    swipeForceMultiplier: 1.0,
-
-    gravityMultiplier: 1.0,
-
-    displayOverlayEnabled: true,
-
-    // VR handling
-    // Use context.sendGameMessage(payload) to emit game events.
-
     // VR-side initialization hook.
-    // context: { scene, camera, renderer, player, controllers, sendGameMessage }
+    // context: { scene, camera, renderer, player, controllers, sendGameMessage, settings }
     async startVR(context) {
+        // Store settings
+        this.settings = context.settings || {};
+
         this.latestPoint = {};
         this.latestBallsState = null;
         this.prevControllerPositions = { right: null, left: null };
@@ -78,15 +139,25 @@ export default {
 
     // Per-frame VR update. delta,time in seconds. context same as startVR.
     // context: { scene, camera, renderer, player, controllers, sendGameMessage,
-    //            screenState, screenMeta, screenRect }
-    // - `screenState`: object with `right` and `left` entries, each `{ onScreen, canvasX, canvasY, uv, hitPoint }` (per-frame intersection)
-    //      - if onScreen is false, nothing else is sent; canvasX and canvasY are canvas coords, hitPoint is WebXR coords, uv is 2D coords on rect.
-    // - `screenMeta`: metadata snapshot `{ screenWidth, screenHeight, topLeftCorner, bottomRightCorner, rectXDistance, rectYDistance }`
-    // - `screenRect`: the THREE.Mesh used to represent the screen rect (optional)
+    //            screenState, screenMeta, screenRect, settings }
     updateVR(delta, time, context) {
-        if (context && typeof context.displayOverlayEnabled === 'boolean') {
-            this.displayOverlayEnabled = context.displayOverlayEnabled;
+        // Update settings from context if provided
+        if (context && context.settings) {
+            this.settings = context.settings;
         }
+
+        const displayOverlayEnabled = this.settings.displayOverlayEnabled !== undefined 
+            ? this.settings.displayOverlayEnabled 
+            : true;
+        const touchRadiusMeters = this.settings.handTouchRadiusMeters !== undefined
+            ? this.settings.handTouchRadiusMeters
+            : 0.06;
+        const minSwipeSpeedMetersPerSec = this.settings.handMinSwipeSpeedMetersPerSec !== undefined
+            ? this.settings.handMinSwipeSpeedMetersPerSec
+            : 0.25;
+        const handSwipeBallCooldownSec = this.settings.handSwipeBallCooldownSec !== undefined
+            ? this.settings.handSwipeBallCooldownSec
+            : 0.10;
 
         const getWorldPointForCanvasXY = (canvasX, canvasY, screenWidth, screenHeight) => {
             if (!context || !context.screenRect || !context.screenMeta) return null;
@@ -212,7 +283,7 @@ export default {
                 const rMeters = Math.max(0.005, rPx * pxToMeters);
                 const base = 0.02;
                 mesh.scale.setScalar(rMeters / base);
-                mesh.visible = !!this.displayOverlayEnabled;
+                mesh.visible = !!displayOverlayEnabled;
             });
 
             for (const [id, mesh] of this.markers.entries()) {
@@ -316,7 +387,7 @@ export default {
                     if (this.markers) this.markers.set(legacyId, legacyMesh);
                 }
                 legacyMesh.position.copy(worldPoint);
-                legacyMesh.visible = !!this.displayOverlayEnabled;
+                legacyMesh.visible = !!displayOverlayEnabled;
 
                 const headsetPos = new THREE.Vector3();
                 context.camera.getWorldPosition(headsetPos);
@@ -343,7 +414,7 @@ export default {
                     const hStart = worldPoint.clone().add(right.clone().multiplyScalar(-lineLength));
                     const hEnd = worldPoint.clone().add(right.clone().multiplyScalar(lineLength));
                     this.horizontalLine.geometry.setFromPoints([hStart, hEnd]);
-                    this.horizontalLine.visible = !!this.displayOverlayEnabled;
+                    this.horizontalLine.visible = !!displayOverlayEnabled;
                 }
 
                 // Vertical line (perpendicular to direction)
@@ -351,7 +422,7 @@ export default {
                     const vStart = worldPoint.clone().add(up.clone().multiplyScalar(-lineLength));
                     const vEnd = worldPoint.clone().add(up.clone().multiplyScalar(lineLength));
                     this.verticalLine.geometry.setFromPoints([vStart, vEnd]);
-                    this.verticalLine.visible = !!this.displayOverlayEnabled;
+                    this.verticalLine.visible = !!displayOverlayEnabled;
                 }
 
                 // Check for controller crossing the point-to-headset vector.
@@ -421,16 +492,16 @@ export default {
                             }
 
                             const radius = (typeof joint.radius === 'number' && Number.isFinite(joint.radius)) ? joint.radius : 0;
-                            const touchR = Math.max(this.touchRadiusMeters, radius * 2.0);
+                            const touchR = Math.max(touchRadiusMeters, radius * 2.0);
                             const touching = bestDist < touchR;
 
                             const wasTouching = !!this.wasTouchingHandJoint.get(jointKey);
                             if (touching && !wasTouching && jointVel) {
                                 const speed = jointVel.length();
-                                if (speed >= this.minSwipeSpeedMetersPerSec) {
+                                if (speed >= minSwipeSpeedMetersPerSec) {
                                     const ballKey = String(targetBallId ?? 'legacy');
                                     const lastT = this.lastHandImpulseTimeByBallId.get(ballKey);
-                                    const cooldownOk = (typeof lastT !== 'number') || ((time - lastT) >= this.handSwipeBallCooldownSec);
+                                    const cooldownOk = (typeof lastT !== 'number') || ((time - lastT) >= handSwipeBallCooldownSec);
                                     if (cooldownOk && !firedBallIdsThisFrame.has(ballKey)) {
                                         this.lastHandImpulseTimeByBallId.set(ballKey, time);
                                         firedBallIdsThisFrame.add(ballKey);
@@ -482,12 +553,12 @@ export default {
                             if (r) bestDist = r.distToSegment;
                         }
 
-                        const touching = bestDist < this.touchRadiusMeters;
+                        const touching = bestDist < touchRadiusMeters;
 
                             // Fire a single impulse on touch enter
                             if (touching && !this.wasTouchingRay[side] && gripVel) {
                                 const speed = gripVel.length();
-                                if (speed >= this.minSwipeSpeedMetersPerSec) {
+                                if (speed >= minSwipeSpeedMetersPerSec) {
                                     // Canvas Y increases downward, so map world +Y(up) to negative canvas Y.
                                     const forceX = gripVel.dot(screenXDir);
                                     const forceY = -gripVel.dot(screenYDirUp);
@@ -521,8 +592,11 @@ export default {
     },
 
     // Screen handling
-    // context: { canvas, sendGameMessage }
+    // context: { canvas, sendGameMessage, settings }
     async startScreen(context) {
+        // Store settings
+        this.settings = context.settings || {};
+
         const { canvas } = context;
         void canvas;
 
@@ -539,11 +613,22 @@ export default {
         void time;
         if (!this.balls || !this.balls.length) return;
 
+        // Update settings from context if provided
+        if (context && context.settings) {
+            this.settings = context.settings;
+        }
+
+        const gravityMultiplier = this.settings.gravityMultiplier !== undefined
+            ? this.settings.gravityMultiplier
+            : 1.0;
+        const swipeForceMultiplier = this.settings.swipeForceMultiplier !== undefined
+            ? this.settings.swipeForceMultiplier
+            : 1.0;
+
         const canvas = context.canvas;
         const ctx = canvas.getContext('2d');
         const baseGravity = 980;
-        const multiplier = (typeof this.gravityMultiplier === 'number' && Number.isFinite(this.gravityMultiplier)) ? this.gravityMultiplier : 1.0;
-        const gravity = baseGravity * multiplier;
+        const gravity = baseGravity * gravityMultiplier;
         const damping = 0.8;
         const friction = 0.98;
 
@@ -682,12 +767,12 @@ export default {
                 ? this.balls[0]
                 : (this.balls.find((b) => b && b.id === targetId) || this.balls[0]);
 
-            const s = (typeof this.swipeForceMultiplier === 'number' && Number.isFinite(this.swipeForceMultiplier))
-                ? this.swipeForceMultiplier
+            const swipeForceMultiplier = this.settings.swipeForceMultiplier !== undefined
+                ? this.settings.swipeForceMultiplier
                 : 1.0;
 
-            target.vx += msg.forceX * this.impulseMultiplierX * s;
-            target.vy += msg.forceY * this.impulseMultiplierY * s;
+            target.vx += msg.forceX * this.impulseMultiplierX * swipeForceMultiplier;
+            target.vy += msg.forceY * this.impulseMultiplierY * swipeForceMultiplier;
             console.log('Applied force:', msg.forceX, msg.forceY, 'ballId=', targetId);
         }
 
