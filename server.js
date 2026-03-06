@@ -1,12 +1,90 @@
 const express = require('express');
 const path = require('path');
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const server = http.createServer(app);
+const sslKeyPath = process.env.SSL_KEY;
+const sslCertPath = process.env.SSL_CERT;
+
+// Load default settings from shared config
+const defaultsPath = path.join(__dirname, 'config', 'defaults.json');
+const defaults = JSON.parse(fs.readFileSync(defaultsPath, 'utf8'));
+
+// Initialize appConfig with system defaults + all game defaults dynamically
+const appConfig = {
+    ...defaults.systemDefaults
+};
+
+// Merge all game defaults from config file
+for (const gameId in defaults.gameDefaults) {
+    Object.assign(appConfig, defaults.gameDefaults[gameId]);
+}
+
+const persistedConfigPath = path.join(__dirname, '.server-config.json');
+
+function applyPersistedConfig(raw) {
+    if (!raw || typeof raw !== 'object') return;
+
+    // Apply any persisted setting that exists in our defaults
+    for (const key in raw) {
+        if (key in appConfig) {
+            const value = raw[key];
+            const currentValue = appConfig[key];
+            const valueType = typeof currentValue;
+            
+            // Type-check and apply the value
+            if (typeof value === valueType) {
+                // Additional validation for specific settings
+                if (key === 'screenGeometryMode') {
+                    const mode = String(value).toLowerCase();
+                    if (mode === 'flat' || mode === 'curved') {
+                        appConfig[key] = mode;
+                    }
+                } else if (valueType === 'number' && Number.isFinite(value)) {
+                    appConfig[key] = value;
+                } else {
+                    appConfig[key] = value;
+                }
+            }
+        }
+    }
+}
+
+function loadPersistedConfig() {
+    try {
+        if (!fs.existsSync(persistedConfigPath)) return;
+        const text = fs.readFileSync(persistedConfigPath, 'utf8');
+        const raw = JSON.parse(text);
+        applyPersistedConfig(raw);
+    } catch (e) {
+        console.warn('Failed to load persisted server config:', e);
+    }
+}
+
+function savePersistedConfig() {
+    try {
+        fs.writeFileSync(persistedConfigPath, JSON.stringify(appConfig, null, 2));
+    } catch (e) {
+        console.warn('Failed to save persisted server config:', e);
+    }
+}
+
+loadPersistedConfig();
+
+const server = (sslKeyPath && sslCertPath)
+    ? https.createServer(
+        {
+            key: fs.readFileSync(sslKeyPath),
+            cert: fs.readFileSync(sslCertPath),
+        },
+        app
+    )
+    : http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const connectedClients = new Map();
@@ -22,12 +100,74 @@ const routes = [
     { path: '/vr', file: 'vr.html' },
     { path: '/desktop', file: 'desktop.html' },
     { path: '/screen', file: 'screen.html' },
+    { path: '/settings', file: 'settings.html' },
 ];
 routes.forEach((route) => {
     app.get(route.path, (req, res) => {
         res.sendFile(path.join(__dirname, 'public', route.file));
     });
 });
+
+app.get('/api/config', (req, res) => {
+    res.json(appConfig);
+});
+
+app.post('/api/config', (req, res) => {
+    const next = req.body || {};
+    let changed = false;
+
+    // Update any setting that exists in our config
+    for (const key in next) {
+        if (key in appConfig) {
+            const value = next[key];
+            const currentValue = appConfig[key];
+            const valueType = typeof currentValue;
+            
+            // Type-check and apply the value
+            if (typeof value === valueType) {
+                // Additional validation for specific settings
+                if (key === 'screenGeometryMode') {
+                    const mode = String(value).toLowerCase();
+                    if (mode === 'flat' || mode === 'curved') {
+                        appConfig[key] = mode;
+                        changed = true;
+                    }
+                } else if (valueType === 'number' && Number.isFinite(value)) {
+                    appConfig[key] = value;
+                    changed = true;
+                } else {
+                    appConfig[key] = value;
+                    changed = true;
+                }
+            }
+        }
+    }
+    
+    // Legacy compatibility: allow setting absolute gravity and convert it to a multiplier.
+    if (typeof next.gravityPixelsPerSec2 === 'number' && Number.isFinite(next.gravityPixelsPerSec2)) {
+        appConfig.gravityMultiplier = next.gravityPixelsPerSec2 / 980;
+        changed = true;
+    }
+
+    if (changed) {
+        savePersistedConfig();
+        broadcastConfig();
+    }
+    res.json(appConfig);
+});
+
+app.post('/api/draw/clear', (req, res) => {
+    for (const [clientWS] of connectedClients) {
+        sendMessage(clientWS, { type: 'GAME_EVENT', message: { event: 'DRAW_CLEAR' } });
+    }
+    res.json({ ok: true });
+});
+
+function broadcastConfig() {
+    for (const [clientWS] of connectedClients) {
+        sendMessage(clientWS, { type: 'CONFIG_UPDATE', message: appConfig });
+    }
+}
 
 function handleMessage(ws, data) {
     if (!data.type) {
@@ -83,6 +223,7 @@ function handleClientRegistration(ws, data) {
                 ws.userID = uuidv4();
                 connectedClients.set(ws, { type: 'SCREEN', userID: ws.userID });
                 sendMessage(ws, { type: 'REGISTRATION_SUCCESS', message: 'Successfully registered as SCREEN client' });
+                sendMessage(ws, { type: 'CONFIG_UPDATE', message: appConfig });
                 console.log('SCREEN client registered');
                 for (const [wsIter, clientInfo] of connectedClients) {
                     if (clientInfo.type !== 'SCREEN') {
@@ -97,6 +238,7 @@ function handleClientRegistration(ws, data) {
             ws.userID = uuidv4();
             connectedClients.set(ws, { type: clientType, userID: ws.userID });
             sendMessage(ws, { type: 'REGISTRATION_SUCCESS', message: `Successfully registered as ${clientType} client` });
+            sendMessage(ws, { type: 'CONFIG_UPDATE', message: appConfig });
             if (screenRegistered) {
                 sendMessage(getScreenClient(), { type: 'NEW_CLIENT', message: { type: clientType, userID: ws.userID } });
             }
@@ -182,7 +324,17 @@ async function handleShutdown(signal) {
     }
 }
 
-server.listen(port, () => { console.log(`HTTP/WebSocket servers listening on port ${port}`); });
+server.listen(port, () => {
+    const isHttps = !!(sslKeyPath && sslCertPath);
+    const scheme = isHttps ? 'https' : 'http';
+    console.log(`${scheme.toUpperCase()}/WebSocket servers listening on ${scheme}://localhost:${port}`);
+    if (isHttps) {
+        console.log(`Using SSL_KEY=${sslKeyPath}`);
+        console.log(`Using SSL_CERT=${sslCertPath}`);
+    } else {
+        console.log('Tip: set SSL_KEY and SSL_CERT env vars (or use `npm run dev:https`) to enable HTTPS.');
+    }
+});
 
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));

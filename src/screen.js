@@ -1,24 +1,27 @@
 import * as cm from './clientManager.js';
 import * as gameAPI from './gameAPI.js';
-import game from './game.js';
-gameAPI.registerGame(game);
+import { DEFAULT_GAME_ID } from './games/index.js';
 
 document.body.style.margin = '0';
 document.body.style.padding = '0';
 document.body.style.overflow = 'hidden';
 document.documentElement.style.overflow = 'hidden';
 
+let configActiveGameId = DEFAULT_GAME_ID;
+let lastGameScreenContext = null;
+
 cm.registerToServer('SCREEN')
     .then(() => {
-        cm.sendMessage({
-            type: 'SCREEN_CALIBRATION',
-            message: {
-                screenWidth: window.innerWidth,
-                screenHeight: window.innerHeight
-            }
-        });
+        sendScreenCalibration();
         // Start the screen-side game (if provided)
-        try { gameAPI.startScreen({ canvas: targetCanvas, sendGameMessage: gameAPI.sendGameMessage, committedCalibration }); } catch (e) { console.error('gameAPI startScreen error', e); }
+        try {
+            const startCtx = { canvas: targetCanvas, sendGameMessage: gameAPI.sendGameMessage, committedCalibration };
+            lastGameScreenContext = startCtx;
+            gameAPI.setActiveGame(configActiveGameId, { screenContext: lastGameScreenContext, settings: gameAPI.getCurrentSettings() });
+            gameAPI.startScreen(startCtx);
+        } catch (e) {
+            console.error('gameAPI startScreen error', e);
+        }
     })
     .catch(error => {
         console.error('Failed to register:', error);
@@ -31,6 +34,37 @@ targetCanvas.height = window.innerHeight;
 targetCanvas.style.backgroundColor = 'white';
 document.body.appendChild(targetCanvas);
 
+function resizeCanvasToWindow() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    
+    // Only update if dimensions changed
+    if (targetCanvas.width !== width || targetCanvas.height !== height) {
+        targetCanvas.width = width;
+        targetCanvas.height = height;
+    }
+}
+
+function sendScreenCalibration() {
+    resizeCanvasToWindow();
+    cm.sendMessage({
+        type: 'SCREEN_CALIBRATION',
+        message: {
+            screenWidth: targetCanvas.width,
+            screenHeight: targetCanvas.height
+        }
+    });
+}
+
+let __resizeRaf = null;
+window.addEventListener('resize', () => {
+    if (__resizeRaf) return;
+    __resizeRaf = requestAnimationFrame(() => {
+        __resizeRaf = null;
+        try { sendScreenCalibration(); } catch (e) { /* ignore */ }
+    });
+});
+
 const targetImage = new Image();
 targetImage.src = '/assets/target.png';
 
@@ -40,13 +74,7 @@ function handleNewClient(message) {
     const { type, userID } = message;
     if (type === 'VR') {
         console.log('New VR client connected:', userID);
-        cm.sendMessage({
-            type: 'SCREEN_CALIBRATION',
-            message: {
-                screenWidth: window.innerWidth,
-                screenHeight: window.innerHeight
-            }
-        });
+        sendScreenCalibration();
     }
 }
 
@@ -57,6 +85,25 @@ function handleClientDisconnect(message) {
 
 cm.handleEvent('NEW_CLIENT', handleNewClient);
 cm.handleEvent('CLIENT_DISCONNECTED', handleClientDisconnect);
+cm.handleEvent('CONFIG_UPDATE', (message) => {
+    if (!message) return;
+
+    // Update all settings in gameAPI
+    gameAPI.updateSettings(message);
+
+    // Handle active game change
+    if (typeof message.activeGameId === 'string') {
+        const nextId = message.activeGameId;
+        if (nextId && nextId !== configActiveGameId) {
+            configActiveGameId = nextId;
+            gameAPI.setActiveGame(nextId, { screenContext: lastGameScreenContext, settings: gameAPI.getCurrentSettings() });
+            if (lastGameScreenContext) {
+                try { void gameAPI.startScreen(lastGameScreenContext); } catch (e) { console.error('gameAPI startScreen error', e); }
+            }
+        }
+    }
+});
+
 cm.handleEvent('CALIBRATION_COMMIT', (message) => {
     console.log('Screen received CALIBRATION_COMMIT (ignored overlay):', message);
     committedCalibration = message;
@@ -67,6 +114,10 @@ let __lastScreenTime = performance.now();
 function __screenTick(t) {
     const delta = (t - __lastScreenTime) / 1000;
     __lastScreenTime = t;
+    
+    // Automatically handle canvas resizing
+    resizeCanvasToWindow();
+    
     try { gameAPI.updateScreen(delta, t / 1000, { canvas: targetCanvas, sendGameMessage: gameAPI.sendGameMessage }); } catch (e) { /* ignore */ }
     requestAnimationFrame(__screenTick);
 }

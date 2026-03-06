@@ -38,17 +38,23 @@ export async function init(setupScene = () => {}, onFrame = () => {}) {
             raySpace.visible = true;
             gripSpace.visible = true;
             const handedness = e.data.handedness;
+            const rawGamepad = e && e.data ? e.data.gamepad : null;
             controllers[handedness] = {
                 raySpace,
                 gripSpace,
-                gamepad: new GamepadWrapper(e.data.gamepad),
+                gamepad: rawGamepad ? new GamepadWrapper(rawGamepad) : null,
             };
         });
         gripSpace.addEventListener('disconnected', (e) => {
             raySpace.visible = false;
             gripSpace.visible = false;
-            const handedness = e.data.handedness;
-            controllers[handedness] = null;
+            const handedness = e && e.data ? e.data.handedness : null;
+            if (handedness === 'left' || handedness === 'right') {
+                controllers[handedness] = null;
+            } else {
+                if (controllers.left && controllers.left.gripSpace === gripSpace) controllers.left = null;
+                if (controllers.right && controllers.right.gripSpace === gripSpace) controllers.right = null;
+            }
         });
     }
 
@@ -65,17 +71,32 @@ export async function init(setupScene = () => {}, onFrame = () => {}) {
     setupScene(globals);
 
     const clock = new THREE.Clock();
-    function animate() {
+    function animate(_t, frame) {
         const delta = clock.getDelta();
         const time = clock.getElapsedTime();
         Object.values(controllers).forEach((controller) => {
-            if (controller?.gamepad) controller.gamepad.update();
+            if (controller && controller.gamepad) {
+                try {
+                    controller.gamepad.update();
+                } catch (e) {
+                    console.warn('Controller gamepad update failed; disabling gamepad for this controller.', e);
+                    controller.gamepad = null;
+                }
+            }
         });
-        onFrame(delta, time, globals);
-        renderer.render(scene, camera);
+        try {
+            onFrame(delta, time, globals, frame);
+        } catch (e) {
+            console.error('XR frame error (onFrame)', e);
+        }
+        try {
+            renderer.render(scene, camera);
+        } catch (e) {
+            console.error('XR frame error (renderer.render)', e);
+        }
     }
     renderer.setAnimationLoop(animate);
 
-    const arButton = ARButton.createButton(renderer, { requiredFeatures: ['local'] });
+    const arButton = ARButton.createButton(renderer, { requiredFeatures: ['local'], optionalFeatures: ['hand-tracking'] });
     document.body.appendChild(arButton);
 }
