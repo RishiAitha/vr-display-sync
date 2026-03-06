@@ -11,46 +11,74 @@ const port = process.env.PORT || 3000;
 const sslKeyPath = process.env.SSL_KEY;
 const sslCertPath = process.env.SSL_CERT;
 
-// Load settings from config file
+// Load default settings from config file
 const defaultsPath = path.join(__dirname, 'config', 'defaults.json');
 const defaults = JSON.parse(fs.readFileSync(defaultsPath, 'utf8'));
 
-// Initialize appConfig with system defaults + all game defaults dynamically
+// Path for runtime settings (gitignored, auto-created from defaults)
+const serverConfigPath = path.join(__dirname, 'config', '.server-config.json');
+
+// Initialize appConfig with system defaults + all game defaults
 const appConfig = {
     ...defaults.systemDefaults
 };
 
-// Merge all game defaults from config file
+// Merge all game defaults
 for (const gameId in defaults.gameDefaults) {
     Object.assign(appConfig, defaults.gameDefaults[gameId]);
 }
 
-function saveDefaultsConfig() {
+// Load runtime config and merge with defaults
+function loadServerConfig() {
     try {
-        // Update the defaults structure and save back to defaults.json
-        const updatedDefaults = {
+        // Always regenerate from defaults on startup
+        saveServerConfig();
+        
+        // Then load it back (for consistency)
+        if (fs.existsSync(serverConfigPath)) {
+            const serverConfig = JSON.parse(fs.readFileSync(serverConfigPath, 'utf8'));
+            // Merge system defaults
+            Object.assign(appConfig, serverConfig.systemDefaults || {});
+            // Merge game defaults
+            if (serverConfig.gameDefaults) {
+                for (const gameId in serverConfig.gameDefaults) {
+                    Object.assign(appConfig, serverConfig.gameDefaults[gameId] || {});
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load server config, using defaults:', e);
+    }
+}
+
+function saveServerConfig() {
+    try {
+        // Reconstruct the structured config
+        const serverConfig = {
             systemDefaults: {},
             gameDefaults: {}
         };
         
-        // Reconstruct systemDefaults from current appConfig
+        // Populate systemDefaults
         for (const key of Object.keys(defaults.systemDefaults)) {
-            updatedDefaults.systemDefaults[key] = appConfig[key];
+            serverConfig.systemDefaults[key] = appConfig[key];
         }
         
-        // Reconstruct gameDefaults from current appConfig
+        // Populate gameDefaults
         for (const gameId in defaults.gameDefaults) {
-            updatedDefaults.gameDefaults[gameId] = {};
+            serverConfig.gameDefaults[gameId] = {};
             for (const key of Object.keys(defaults.gameDefaults[gameId])) {
-                updatedDefaults.gameDefaults[gameId][key] = appConfig[key];
+                serverConfig.gameDefaults[gameId][key] = appConfig[key];
             }
         }
         
-        fs.writeFileSync(defaultsPath, JSON.stringify(updatedDefaults, null, 2));
+        fs.writeFileSync(serverConfigPath, JSON.stringify(serverConfig, null, 2));
     } catch (e) {
-        console.warn('Failed to save config to defaults.json:', e);
+        console.warn('Failed to save server config:', e);
     }
 }
+
+loadServerConfig();
 
 const server = (sslKeyPath && sslCertPath)
     ? https.createServer(
@@ -126,7 +154,7 @@ app.post('/api/config', (req, res) => {
     }
 
     if (changed) {
-        saveDefaultsConfig();
+        saveServerConfig();
         broadcastConfig();
     }
     res.json(appConfig);

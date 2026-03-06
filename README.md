@@ -307,22 +307,17 @@ The settings UI automatically generates appropriate controls based on the `type`
 
 #### How Settings Work
 
-Settings are stored in `config/defaults.json` and loaded when the server starts:
-
-1. **`config/defaults.json`** - All settings values (committed to git)
-2. **Live config** - Current active configuration broadcast to all clients
+Settings are defined in `config/defaults.json` and loaded when the server starts. Changes made via the `/settings` page are persisted to runtime config and broadcast to all clients.
 
 When the server starts:
 - Loads settings from `config/defaults.json`
 - Broadcasts config to all connected clients
 
 When settings change via `/settings` page:
-- Server updates live config
-- Saves changes back to `config/defaults.json`
+- Server updates live config and saves to runtime file
 - Broadcasts `CONFIG_UPDATE` message to all clients
 - Clients receive settings via `context.settings`
-
-**Note:** Settings changes are committed to git with your project, so team members share the same configuration.
+- Settings reset to defaults on next server restart
 
 ### Input Handling in VR
 
@@ -406,7 +401,6 @@ if (handState && handState.right.tracked) {
 - `server.js`
 	- Host server that relays messages between clients and coordinates registration.
     - Loads settings from `config/defaults.json`
-    - Saves settings changes back to `config/defaults.json`
     - Runs on port 3000 (configurable via PORT env var)
     - Supports HTTPS via SSL_KEY and SSL_CERT env vars
     - Run `npm run dev` for development or `npm run dev:https` for HTTPS mode
@@ -453,9 +447,12 @@ if (handState && handState.right.tracked) {
     - Hand joints debug visualization
 
 - `config/defaults.json`
-	- All system and game settings
+	- Default values for all system and game settings
     - Loaded by server on startup
-    - Updated when settings change via `/settings` page
+
+- `config/server-config.json`
+    - Runtime settings used to change settings while running server
+    - Populated initially by `config/defaults.json`
 
 - `src/settings.js`
 	- Settings UI that auto-generates controls from game metadata
