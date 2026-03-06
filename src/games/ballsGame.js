@@ -601,12 +601,26 @@ export default {
         const { canvas } = context;
         void canvas;
 
+        // Load ball image
+        this.ballImage = new Image();
+        this.ballImage.src = '/assets/ImmerseGTCircle.png';
+
+        // Load overlay images
+        this.qrImage = new Image();
+        this.qrImage.src = '/assets/ImmerseGTQR.png';
+        this.infoImage = new Image();
+        this.infoImage.src = '/assets/ImmerseGTInfo.png';
+
         // Initialize balls with physics
         this.balls = [
-            { id: 0, x: canvas.width * 0.25, y: canvas.height * 0.25, vx: 0, vy: 0, radius: 100, color: 0xff0000 },
-            { id: 1, x: canvas.width * 0.55, y: canvas.height * 0.15, vx: 50, vy: 0, radius: 100, color: 0x00aaff },
-            { id: 2, x: canvas.width * 0.75, y: canvas.height * 0.35, vx: -30, vy: 0, radius: 100, color: 0xff8800 },
-            { id: 3, x: canvas.width * 0.40, y: canvas.height * 0.55, vx: 0, vy: -20, radius: 100, color: 0x66ff66 },
+            { id: 0, x: canvas.width * 0.15, y: canvas.height * 0.20, vx: 0,   vy: 0,   radius: 70, color: 0xff0000 },
+            { id: 1, x: canvas.width * 0.35, y: canvas.height * 0.15, vx: 50,  vy: 0,   radius: 70, color: 0x00aaff },
+            { id: 2, x: canvas.width * 0.55, y: canvas.height * 0.25, vx: -30, vy: 0,   radius: 70, color: 0xff8800 },
+            { id: 3, x: canvas.width * 0.75, y: canvas.height * 0.15, vx: 0,   vy: -20, radius: 70, color: 0x66ff66 },
+            { id: 4, x: canvas.width * 0.20, y: canvas.height * 0.50, vx: 40,  vy: 0,   radius: 70, color: 0xff44cc },
+            { id: 5, x: canvas.width * 0.45, y: canvas.height * 0.45, vx: -20, vy: 30,  radius: 70, color: 0xffff00 },
+            { id: 6, x: canvas.width * 0.65, y: canvas.height * 0.55, vx: 30,  vy: -10, radius: 70, color: 0x44ffee },
+            { id: 7, x: canvas.width * 0.85, y: canvas.height * 0.40, vx: -40, vy: 20,  radius: 70, color: 0xaa44ff },
         ];
     },
 
@@ -633,8 +647,9 @@ export default {
         const damping = 0.8;
         const friction = 0.98;
 
-        // Clear and draw
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Clear and draw with black background
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         for (const ball of this.balls) {
             // Apply gravity
@@ -665,11 +680,31 @@ export default {
                 ball.y = canvas.height - ball.radius;
                 ball.vy = -Math.abs(ball.vy) * damping;
             }
+        }
 
-            ctx.fillStyle = `#${(ball.color >>> 0).toString(16).padStart(6, '0')}`;
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fill();
+        // Draw overlay images (beneath balls)
+        const padding = 20;
+        const qrSize = Math.round(canvas.height * 0.22);
+        if (this.qrImage && this.qrImage.complete && this.qrImage.naturalWidth > 0) {
+            ctx.drawImage(this.qrImage, canvas.width - qrSize - padding, canvas.height - qrSize - padding, qrSize, qrSize);
+        }
+        const infoH = Math.round(canvas.height * 0.12);
+        const infoW = Math.round(infoH * (this.infoImage && this.infoImage.naturalWidth && this.infoImage.naturalHeight
+            ? this.infoImage.naturalWidth / this.infoImage.naturalHeight : 4));
+        if (this.infoImage && this.infoImage.complete && this.infoImage.naturalWidth > 0) {
+            ctx.drawImage(this.infoImage, padding, canvas.height - infoH - padding, infoW, infoH);
+        }
+
+        // Draw balls on top of overlay images
+        for (const ball of this.balls) {
+            if (this.ballImage && this.ballImage.complete && this.ballImage.naturalWidth > 0) {
+                ctx.drawImage(this.ballImage, ball.x - ball.radius, ball.y - ball.radius, ball.radius * 2, ball.radius * 2);
+            } else {
+                ctx.fillStyle = `#${(ball.color >>> 0).toString(16).padStart(6, '0')}`;
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
 
         // Send balls state to VR
@@ -735,6 +770,9 @@ export default {
 
     disposeScreen(_context) {
         this.balls = [];
+        this.ballImage = null;
+        this.qrImage = null;
+        this.infoImage = null;
     },
 
     /*
