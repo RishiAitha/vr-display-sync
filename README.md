@@ -134,12 +134,6 @@ export const GAMES = new Map([
 
 **Important:** These values should match the `default` fields in your metadata (step 1). The server loads initial settings from this file on startup, while the metadata defaults serve as documentation and UI hints.
 
-**4. Add to game selector** in `src/defaultSettings.js`:
-
-```javascript
-options: ['balls', 'paint', 'draw', 'yourgame']  // Add your game
-```
-
 That's it! Your game will automatically:
 - Appear in the settings menu with its own tab
 - Have its settings UI auto-generated
@@ -313,24 +307,22 @@ The settings UI automatically generates appropriate controls based on the `type`
 
 #### How Settings Work
 
-The settings system has three layers:
+Settings are stored in `config/defaults.json` and loaded when the server starts:
 
-1. **`config/defaults.json`** - Shipped default values for all settings
-2. **`.server-config.json`** - Runtime persisted values (auto-created, gitignored)
-3. **Live config** - Current active configuration broadcast to all clients
+1. **`config/defaults.json`** - All settings values (committed to git)
+2. **Live config** - Current active configuration broadcast to all clients
 
 When the server starts:
-- Loads defaults from `config/defaults.json`
-- Merges with persisted values from `.server-config.json` (if exists)
-- Broadcasts initial config to all connected clients
+- Loads settings from `config/defaults.json`
+- Broadcasts config to all connected clients
 
 When settings change via `/settings` page:
 - Server updates live config
-- Saves to `.server-config.json` for persistence
+- Saves changes back to `config/defaults.json`
 - Broadcasts `CONFIG_UPDATE` message to all clients
 - Clients receive settings via `context.settings`
 
-**Note:** `.server-config.json` is gitignored - it stores per-installation runtime state. Always define defaults in `config/defaults.json`.
+**Note:** Settings changes are committed to git with your project, so team members share the same configuration.
 
 ### Input Handling in VR
 
@@ -413,7 +405,8 @@ if (handState && handState.right.tracked) {
 ### Core System Files
 - `server.js`
 	- Host server that relays messages between clients and coordinates registration.
-    - Loads default settings from `config/defaults.json`
+    - Loads settings from `config/defaults.json`
+    - Saves settings changes back to `config/defaults.json`
     - Runs on port 3000 (configurable via PORT env var)
     - Supports HTTPS via SSL_KEY and SSL_CERT env vars
     - Run `npm run dev` for development or `npm run dev:https` for HTTPS mode
@@ -453,16 +446,16 @@ if (handState && handState.right.tracked) {
     - Injects settings into context
     - Routes messages to current game
 
-- `src/defaultSettings.js`
+- `src/systemSettings.js`
 	- System-wide settings metadata (not game-specific)
-    - Active game selector
+    - Active game selector (dynamically populated from registered games)
     - Screen geometry mode
     - Hand joints debug visualization
 
 - `config/defaults.json`
-	- Default values for all system and game settings
-    - Used by server on startup
-    - Merged with persisted settings from `.server-config.json`
+	- All system and game settings
+    - Loaded by server on startup
+    - Updated when settings change via `/settings` page
 
 - `src/settings.js`
 	- Settings UI that auto-generates controls from game metadata
@@ -507,23 +500,23 @@ Open locally:
    - Windows: Run `ipconfig` and look for IPv4 Address (e.g., `192.168.1.100`)
    - Mac/Linux: Run `ifconfig` and look for inet address
 
-3. **Generate a certificate for your IP:**
+3. **Generate a certificate for your IP in the config folder:**
    ```bash
    mkcert -install
-   mkcert YOUR_IP_HERE
+   mkcert -cert-file config/YOUR_IP_HERE.pem -key-file config/YOUR_IP_HERE-key.pem YOUR_IP_HERE
    ```
-   Example: `mkcert 192.168.1.100`
+   Example: `mkcert -cert-file config/192.168.1.100.pem -key-file config/192.168.1.100-key.pem 192.168.1.100`
 
 4. **Start the server with HTTPS:**
 
    **Windows:**
    ```powershell
-   $env:SSL_KEY="./YOUR_IP_HERE-key.pem"; $env:SSL_CERT="./YOUR_IP_HERE.pem"; npm run dev
+   $env:SSL_KEY="config/YOUR_IP_HERE-key.pem"; $env:SSL_CERT="config/YOUR_IP_HERE.pem"; npm run dev
    ```
 
    **Mac/Linux:**
    ```bash
-   SSL_KEY=./YOUR_IP_HERE-key.pem SSL_CERT=./YOUR_IP_HERE.pem npm run dev
+   SSL_KEY=config/YOUR_IP_HERE-key.pem SSL_CERT=config/YOUR_IP_HERE.pem npm run dev
    ```
 
 5. **Access on Quest:** `https://YOUR_IP_HERE:3000/vr`

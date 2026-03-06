@@ -1,5 +1,5 @@
 import { GAMES } from './games/index.js';
-import { SYSTEM_SETTINGS_METADATA } from './defaultSettings.js';
+import { SYSTEM_SETTINGS_METADATA } from './systemSettings.js';
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);

@@ -11,7 +11,7 @@ const port = process.env.PORT || 3000;
 const sslKeyPath = process.env.SSL_KEY;
 const sslCertPath = process.env.SSL_CERT;
 
-// Load default settings from shared config
+// Load settings from config file
 const defaultsPath = path.join(__dirname, 'config', 'defaults.json');
 const defaults = JSON.parse(fs.readFileSync(defaultsPath, 'utf8'));
 
@@ -25,56 +25,32 @@ for (const gameId in defaults.gameDefaults) {
     Object.assign(appConfig, defaults.gameDefaults[gameId]);
 }
 
-const persistedConfigPath = path.join(__dirname, '.server-config.json');
-
-function applyPersistedConfig(raw) {
-    if (!raw || typeof raw !== 'object') return;
-
-    // Apply any persisted setting that exists in our defaults
-    for (const key in raw) {
-        if (key in appConfig) {
-            const value = raw[key];
-            const currentValue = appConfig[key];
-            const valueType = typeof currentValue;
-            
-            // Type-check and apply the value
-            if (typeof value === valueType) {
-                // Additional validation for specific settings
-                if (key === 'screenGeometryMode') {
-                    const mode = String(value).toLowerCase();
-                    if (mode === 'flat' || mode === 'curved') {
-                        appConfig[key] = mode;
-                    }
-                } else if (valueType === 'number' && Number.isFinite(value)) {
-                    appConfig[key] = value;
-                } else {
-                    appConfig[key] = value;
-                }
+function saveDefaultsConfig() {
+    try {
+        // Update the defaults structure and save back to defaults.json
+        const updatedDefaults = {
+            systemDefaults: {},
+            gameDefaults: {}
+        };
+        
+        // Reconstruct systemDefaults from current appConfig
+        for (const key of Object.keys(defaults.systemDefaults)) {
+            updatedDefaults.systemDefaults[key] = appConfig[key];
+        }
+        
+        // Reconstruct gameDefaults from current appConfig
+        for (const gameId in defaults.gameDefaults) {
+            updatedDefaults.gameDefaults[gameId] = {};
+            for (const key of Object.keys(defaults.gameDefaults[gameId])) {
+                updatedDefaults.gameDefaults[gameId][key] = appConfig[key];
             }
         }
-    }
-}
-
-function loadPersistedConfig() {
-    try {
-        if (!fs.existsSync(persistedConfigPath)) return;
-        const text = fs.readFileSync(persistedConfigPath, 'utf8');
-        const raw = JSON.parse(text);
-        applyPersistedConfig(raw);
+        
+        fs.writeFileSync(defaultsPath, JSON.stringify(updatedDefaults, null, 2));
     } catch (e) {
-        console.warn('Failed to load persisted server config:', e);
+        console.warn('Failed to save config to defaults.json:', e);
     }
 }
-
-function savePersistedConfig() {
-    try {
-        fs.writeFileSync(persistedConfigPath, JSON.stringify(appConfig, null, 2));
-    } catch (e) {
-        console.warn('Failed to save persisted server config:', e);
-    }
-}
-
-loadPersistedConfig();
 
 const server = (sslKeyPath && sslCertPath)
     ? https.createServer(
@@ -150,7 +126,7 @@ app.post('/api/config', (req, res) => {
     }
 
     if (changed) {
-        savePersistedConfig();
+        saveDefaultsConfig();
         broadcastConfig();
     }
     res.json(appConfig);

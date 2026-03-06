@@ -10,7 +10,6 @@ import { XR_BUTTONS } from 'gamepad-wrapper';
  * 3. Fill in the lifecycle methods (startVR, updateVR, startScreen, updateScreen)
  * 4. Register your game in src/games/index.js
  * 5. Add defaults to config/defaults.json
- * 6. Add game ID to options in src/defaultSettings.js
  */
 
 export const metadata = {

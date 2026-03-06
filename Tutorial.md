@@ -166,14 +166,6 @@ Add to `config/defaults.json`:
 
 **Note:** These values should match the `default` fields in your metadata from step 1.1. The server loads these as the initial settings, while the metadata defaults are used for documentation and UI generation.
 
-### 1.4 Add to Game Selector
-
-In `src/defaultSettings.js`, update the options array:
-
-```javascript
-options: ['balls', 'paint', 'draw', 'tutorial']  // Add 'tutorial'
-```
-
 ---
 
 ## Step 2: Shooting Spheres from VR Controllers
@@ -730,10 +722,10 @@ choco install mkcert
 mkcert -install
 
 # Generate cert for your LAN IP (find with ipconfig)
-mkcert 192.168.1.100
+mkcert -cert-file config/192.168.1.100.pem -key-file config/192.168.1.100-key.pem 192.168.1.100
 
 # Start server
-$env:SSL_KEY="./192.168.1.100-key.pem"; $env:SSL_CERT="./192.168.1.100.pem"; npm run dev
+$env:SSL_KEY="config/192.168.1.100-key.pem"; $env:SSL_CERT="config/192.168.1.100.pem"; npm run dev
 ```
 
 **Mac/Linux users:**

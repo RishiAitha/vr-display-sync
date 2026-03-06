@@ -3,5 +3,4 @@ dist/
 .env
 .DS_Store
 .cert/
-.server-config.json
-*.pem
+config/*.pem

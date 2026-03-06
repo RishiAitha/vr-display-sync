@@ -1,3 +1,5 @@
+import { GAMES } from './games/index.js';
+
 /**
  * System-wide default settings that are not game-specific.
  * These settings control the overall application behavior.
@@ -23,7 +25,7 @@ export const SYSTEM_SETTINGS_METADATA = [
         label: 'Active Game',
         type: 'select',
         default: 'balls',
-        options: ['balls', 'paint', 'draw', 'tutorial'],
+        options: Array.from(GAMES.keys()), // Dynamically generated from registered games
         tab: 'system',
         description: 'The current game to load'
     },
