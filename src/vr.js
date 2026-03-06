@@ -88,8 +88,6 @@ let rayHelper;
 let handDebugGroup = null;
 let handDebugMeshes = new Map();
 let statusDisplay;
-let frontLabel = null;
-let backLabel = null;
 
 let lastScreenRectOverlayEnabled = null;
 
@@ -597,8 +595,6 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                     if (widgetGroup) widgetGroup.visible = false;
                     if (!screenRect && aspectRatio) addScreenRect(scene);
                     if (screenRect) screenRect.visible = true;
-                    if (frontLabel) { if (frontLabel.parent) frontLabel.parent.remove(frontLabel); frontLabel = null; }
-                    if (backLabel) { if (backLabel.parent) backLabel.parent.remove(backLabel); backLabel = null; }
                     return;
                 }
                 grabbedWidget = hoveredWidget;
@@ -672,14 +668,18 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                     const startBR = grabState.startBottomRight;
                     const startTLV = new THREE.Vector3(startTL[0], startTL[1], startTL[2]);
                     const startBRV = new THREE.Vector3(startBR[0], startBR[1], startBR[2]);
-                    const centerV = startTLV.clone().add(startBRV).multiplyScalar(0.5);
-
-                    const startV = cornerName === 'topLeft' ? startTLV : startBRV;
-                    const r0 = startV.clone().sub(centerV);
-                    const r0Len = r0.length();
-                    if (r0Len < 1e-6) return;
-                    const dirNorm = r0.clone().divideScalar(r0Len);
-
+                    
+                    // Fixed corner is the opposite of the one being dragged
+                    const fixedCorner = cornerName === 'topLeft' ? startBRV : startTLV;
+                    const movingCorner = cornerName === 'topLeft' ? startTLV : startBRV;
+                    
+                    // Direction from fixed corner to moving corner
+                    const direction = movingCorner.clone().sub(fixedCorner);
+                    const dirLen = direction.length();
+                    if (dirLen < 1e-6) return;
+                    const dirNorm = direction.clone().normalize();
+                    
+                    // Calculate how much the controller has moved along the diagonal
                     let projected = 0;
                     if (typeof grabState.grabDistance === 'number') {
                         const rayDir = new THREE.Vector3(0, 0, -1).applyQuaternion(raySpace.quaternion).normalize();
@@ -693,17 +693,22 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                         const delta = curr.clone().sub(grabState.startControllerPos);
                         projected = delta.dot(dirNorm);
                     }
+                    
+                    // Scale factor based on movement
                     const k = 1.0;
-                    const scaleFactor = Math.exp(k * (projected / Math.max(0.001, r0Len)));
-                    const r1 = r0.clone().multiplyScalar(scaleFactor);
-                    const newMoving = centerV.clone().add(r1);
-                    const newOpposite = centerV.clone().sub(r1);
+                    const scaleFactor = Math.exp(k * (projected / Math.max(0.001, dirLen)));
+                    
+                    // Calculate new diagonal vector maintaining direction (and thus aspect ratio)
+                    const newDirection = direction.clone().multiplyScalar(scaleFactor);
+                    const newMovingCorner = fixedCorner.clone().add(newDirection);
+                    
+                    // Update corners
                     if (cornerName === 'topLeft') {
-                        topLeftCorner = [newMoving.x, newMoving.y, newMoving.z];
-                        bottomRightCorner = [newOpposite.x, newOpposite.y, newOpposite.z];
+                        topLeftCorner = [newMovingCorner.x, newMovingCorner.y, newMovingCorner.z];
+                        bottomRightCorner = [fixedCorner.x, fixedCorner.y, fixedCorner.z];
                     } else {
-                        bottomRightCorner = [newMoving.x, newMoving.y, newMoving.z];
-                        topLeftCorner = [newOpposite.x, newOpposite.y, newOpposite.z];
+                        bottomRightCorner = [newMovingCorner.x, newMovingCorner.y, newMovingCorner.z];
+                        topLeftCorner = [fixedCorner.x, fixedCorner.y, fixedCorner.z];
                     }
                 } else if (type === 'rotateY') {
                     const centerW = grabState.rotateCenter ? grabState.rotateCenter.clone() : new THREE.Vector3(
@@ -908,95 +913,6 @@ function addScreenRect(scene) {
     // A plain PlaneGeometry is already aligned, so flipping would mirror UV->world mapping.
     const flipY = getActiveScreenMode() === 'flat' ? 0 : Math.PI;
     screenRect.rotation.set(0, -angle + flipY, 0);
-
-    // Labels
-    if (!frontLabel) {
-        frontLabel = new Text();
-        frontLabel.anchorX = 'center';
-        frontLabel.anchorY = 'top';
-        frontLabel.fontSize = 0.035;
-        frontLabel.color = 0xffffff;
-        frontLabel.outlineWidth = 0.001;
-        frontLabel.outlineColor = 0x000000;
-        frontLabel.frustumCulled = false;
-        scene.add(frontLabel);
-    }
-    if (!backLabel) {
-        backLabel = new Text();
-        backLabel.anchorX = 'center';
-        backLabel.anchorY = 'top';
-        backLabel.fontSize = 0.035;
-        backLabel.color = 0xffffff;
-        backLabel.outlineWidth = 0.001;
-        backLabel.outlineColor = 0x000000;
-        backLabel.frustumCulled = false;
-        scene.add(backLabel);
-    }
-
-    const localY = rectYDistance / 2 - 0.03;
-    const insetZ = 0.01;
-    frontLabel.text = 'Back';  // Swapped due to 180° mesh rotation
-    backLabel.text = 'Front';  // Swapped due to 180° mesh rotation
-
-    if (screenRect) screenRect.updateMatrixWorld(true);
-
-    const frontLocal = new THREE.Vector3(0, localY, insetZ);
-    const backLocal = new THREE.Vector3(0, localY, -insetZ);
-    const frontWorld = frontLocal.clone();
-    const backWorld = backLocal.clone();
-    if (screenRect) {
-        screenRect.localToWorld(frontWorld);
-        screenRect.localToWorld(backWorld);
-        frontLabel.position.copy(frontWorld);
-        backLabel.position.copy(backWorld);
-    }
-
-    if (screenRect) {
-        const planeQuat = screenRect.quaternion.clone();
-        frontLabel.quaternion.copy(planeQuat);
-        const yFlip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI);
-        const backQuat = planeQuat.clone().multiply(yFlip);
-        backLabel.quaternion.copy(backQuat);
-    }
-    frontLabel.sync();
-    backLabel.sync();
-
-    [frontLabel, backLabel].forEach((lbl) => {
-        if (!lbl) return;
-        lbl.renderOrder = 9999;
-        lbl.frustumCulled = false;
-        if (lbl.material) {
-            lbl.material.depthTest = false;
-            lbl.material.depthWrite = false;
-            lbl.material.transparent = true;
-        }
-    });
-
-    setTimeout(() => {
-        // If calibration completed in the meantime, remove any lingering labels
-        // and avoid re-showing them from this timeout callback.
-        if (calibrated) {
-            [frontLabel, backLabel].forEach((lbl) => {
-                try {
-                    if (!lbl) return;
-                    if (lbl.parent) lbl.parent.remove(lbl);
-                } catch (e) {}
-            });
-            frontLabel = null;
-            backLabel = null;
-            return;
-        }
-        [frontLabel, backLabel].forEach((lbl) => {
-            if (!lbl) return;
-            if (lbl.material) {
-                lbl.material.depthTest = false;
-                lbl.material.depthWrite = false;
-                lbl.material.transparent = true;
-            }
-            lbl.visible = true;
-            lbl.frustumCulled = false;
-        });
-    }, 100);
 
     updateWidgetPositions();
 }
