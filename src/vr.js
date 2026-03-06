@@ -106,6 +106,7 @@ let fineTuneMode = true;
 let selectedCorner = 'topLeft';
 let cornerDistance = 2.0;
 let gameStartedVR = false;
+let hasTriedLoadingCalibration = false;
 
 // Latest per-frame screen intersection state (populated each frame)
 let latestScreenState = { right: { onScreen: false }, left: { onScreen: false } };
@@ -568,6 +569,7 @@ async function onFrame(delta, time, {scene, camera, renderer, player, controller
                         }
                     });
                     calibrated = true;
+                    saveCalibration();
                     // Start the active game once calibration is committed
                     if (!gameStartedVR) {
                         gameStartedVR = true;
@@ -917,12 +919,78 @@ function addScreenRect(scene) {
     updateWidgetPositions();
 }
 
+// ---------- Calibration persistence ----------
+function saveCalibration() {
+    try {
+        const data = {
+            topLeftCorner: [...topLeftCorner],
+            bottomRightCorner: [...bottomRightCorner],
+            rectXDistance,
+            rectYDistance
+        };
+        localStorage.setItem('vr-calibration', JSON.stringify(data));
+        console.log('Calibration saved to localStorage');
+    } catch (e) {
+        console.warn('Failed to save calibration:', e);
+    }
+}
+
+function loadCalibration() {
+    try {
+        const stored = localStorage.getItem('vr-calibration');
+        if (!stored) return false;
+        
+        const data = JSON.parse(stored);
+        if (!data.topLeftCorner || !data.bottomRightCorner || 
+            typeof data.rectXDistance !== 'number' || typeof data.rectYDistance !== 'number') {
+            return false;
+        }
+        
+        topLeftCorner = [...data.topLeftCorner];
+        bottomRightCorner = [...data.bottomRightCorner];
+        rectXDistance = data.rectXDistance;
+        rectYDistance = data.rectYDistance;
+        
+        console.log('Calibration loaded from localStorage');
+        return true;
+    } catch (e) {
+        console.warn('Failed to load calibration:', e);
+        return false;
+    }
+}
+
+function clearCalibration() {
+    try {
+        localStorage.removeItem('vr-calibration');
+        console.log('Calibration cleared from localStorage');
+    } catch (e) {
+        console.warn('Failed to clear calibration:', e);
+    }
+}
+
 // ---------- Calibration messages ----------
 function handleCalibration(message) {
     screenWidth = message.screenWidth;
     screenHeight = message.screenHeight;
     aspectRatio = screenWidth / screenHeight;
 
+    // Try to load from localStorage once (before sceneVar is ready)
+    if (!hasTriedLoadingCalibration && !calibrated) {
+        hasTriedLoadingCalibration = true;
+        const loaded = loadCalibration();
+        if (loaded) {
+            console.log('Loaded previous calibration position from localStorage');
+        }
+    }
+
+    // If sceneVar is ready and we have loaded calibration data, initialize with it
+    if (!calibrated && !screenRect && sceneVar && rectXDistance && rectYDistance) {
+        addScreenRect(sceneVar);
+        spawnWidgets(sceneVar);
+        console.log('Initialized with loaded calibration - adjust and press Ready to confirm');
+        return;
+    }
+    
     // If we're already calibrated, keep width (rectXDistance) and adapt height to match aspect ratio.
     if (calibrated && rectXDistance && aspectRatio) {
         const prevRectY = rectYDistance;
@@ -951,11 +1019,16 @@ function handleCalibration(message) {
             setTimeout(() => handleCalibration(message), 500);
             return;
         }
-        const center = new THREE.Vector3(0, -0.3, -0.6);
-        rectXDistance = 1.0;
-        rectYDistance = aspectRatio ? (rectXDistance / aspectRatio) : 0.5;
-        topLeftCorner = [center.x - rectXDistance / 2, center.y + rectYDistance / 2, center.z];
-        bottomRightCorner = [center.x + rectXDistance / 2, center.y - rectYDistance / 2, center.z];
+        
+        // Only use default position if we didn't load from localStorage
+        if (!rectXDistance || !rectYDistance) {
+            const center = new THREE.Vector3(0, -0.3, -0.6);
+            rectXDistance = 1.0;
+            rectYDistance = aspectRatio ? (rectXDistance / aspectRatio) : 0.5;
+            topLeftCorner = [center.x - rectXDistance / 2, center.y + rectYDistance / 2, center.z];
+            bottomRightCorner = [center.x + rectXDistance / 2, center.y - rectYDistance / 2, center.z];
+        }
+        
         addScreenRect(sceneVar);
         spawnWidgets(sceneVar);
     }
@@ -964,6 +1037,8 @@ function handleCalibration(message) {
 function resetCalibration() {
     calibrated = false;
     fineTuneMode = true;
+    clearCalibration();
+    hasTriedLoadingCalibration = false;
     selectedCorner = 'topLeft';
     if (screenRect) { sceneVar.remove(screenRect); screenRect = null; }
     if (frontLabel) { if (frontLabel.parent) frontLabel.parent.remove(frontLabel); frontLabel = null; }
